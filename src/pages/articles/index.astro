@@ -1,0 +1,4 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro'; import PageHero from '@/components/PageHero.astro'; import ArticleCard from '@/components/ArticleCard.astro'; import FilterPanel from '@/components/FilterPanel.astro'; import { articles } from '@/data/articles'; const categories=[...new Set(articles.map((article)=>article.category))];
+---
+<BaseLayout title="Статьи" description="Авторские материалы Владимира Денисова о садоводстве, растениях и экспериментах в Донбассе."><PageHero eyebrow="Записи и наблюдения" title="Статьи" intro="Практические материалы, собранные вокруг реальных растений, фотографий и сезонов." note="Часть текстов пока является редакционным каркасом и будет заменена авторскими публикациями."/><section class="section"><div class="wrap"><FilterPanel categories={categories} noun="материалов"/><div class="cards-grid">{articles.map((article)=><ArticleCard article={article}/>)}</div></div></section></BaseLayout>

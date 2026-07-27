@@ -1,0 +1,15 @@
+---
+import type { Plant } from '@/data/types';
+import PhotoPlaceholder from './PhotoPlaceholder.astro';
+interface Props { plant: Plant }
+const { plant } = Astro.props;
+---
+<article class="card plant-card" data-search={`${plant.name} ${plant.category} ${plant.variety ?? ''}`.toLowerCase()} data-category={plant.category}>
+  <a class="card-media" href={`/plants/${plant.slug}/`} tabindex="-1"><PhotoPlaceholder label={plant.name} image={plant.images[0]} alt={plant.images[0] ? `${plant.name} в саду Владимира Денисова` : ''} /></a>
+  <div class="card-body">
+    <div class="card-meta"><span>{plant.category}</span><span>{plant.status}</span></div>
+    <h2><a href={`/plants/${plant.slug}/`}>{plant.name}</a></h2>
+    <p>{plant.description}</p>
+    <span class="text-link">Открыть карточку <span aria-hidden="true">→</span></span>
+  </div>
+</article>

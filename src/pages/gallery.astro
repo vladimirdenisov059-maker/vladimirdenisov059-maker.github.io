@@ -1,0 +1,53 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import PageHero from '@/components/PageHero.astro';
+const photos = [
+  { src:'/images/plants/aktinidiya-purpurnaya/aktinidiya-purpurnaya.jpg', title:'Актинидия пурпурная', alt:'Плоды актинидии пурпурной в саду Владимира Денисова' },
+  { src:'/images/plants/boyaryshnik-shurenok/boyaryshnik-rozovyy-shurenok.jpg', title:'Боярышник розовый Шурёнок', alt:'Плоды розового боярышника Шурёнок' },
+  { src:'/images/plants/grusha-chingizitka/grusha-chingizitka.jpg', title:'Груша Чингизитка', alt:'Груша Чингизитка в саду Владимира' },
+  { src:'/images/plants/grusha-chingizitka/grusha-chingizitka-ves.jpg', title:'Груша Чингизитка — дополнительный снимок', alt:'Авторская фотография груши Чингизитка' },
+  { src:'/images/plants/kizil/kizil-cvetet-pod-snegom.jpg', title:'Кизил цветёт под снегом', alt:'Цветущий кизил под снегом' },
+  { src:'/images/plants/pavlovniya/list-pavlovnii.jpg', title:'Лист павловнии', alt:'Крупный лист павловнии в саду' },
+  { src:'/images/plants/persik-ledyanoy/persik-ledyanoy.jpg', title:'Персик Ледяной', alt:'Плод персика Ледяной' },
+  { src:'/images/plants/son-trava/son-trava-belaya.jpg', title:'Сон-трава белая', alt:'Белое цветение сон-травы' },
+  { src:'/images/plants/son-trava/son-trava-fioletovaya.jpg', title:'Сон-трава фиолетовая', alt:'Фиолетовое цветение сон-травы' },
+  { src:'/images/plants/marakuya-severnaya/cvetok-marakuyi-severnoy.jpg', title:'Цветок Северной Маракуйи', alt:'Цветок растения, которое автор называет Северной Маракуйей' },
+  { src:'/images/plants/krasnomyakotnye-yabloni/yabloko-krasnomyakotnoe.jpg', title:'Красномякотное яблоко', alt:'Разрез красномякотного яблока из сада Владимира' },
+  { src:'/images/plants/hurma-wonderful/hurma-wonderful-cvetenie.jpg', title:'Цветение прививки хурмы Wonderful', alt:'Цветение прививки хурмы Wonderful' },
+  { src:'/images/gallery/garden-2022-08-25.jpg', title:'Архивный снимок, 25 августа 2022', alt:'Архивная фотография из сада Владимира Денисова' },
+  { src:'/images/plants/ayva-yaponskaya/ayva-yaponskaya-henomeles.jpg', title:'Айва японская (хеномелес)', alt:'Плоды айвы японской в саду' },
+  { src:'/images/plants/boyaryshnik/boyaryshnik-zheltyy-poyarkovoy.jpg', title:'Жёлтый неколючий боярышник Поярковой', alt:'Жёлтые плоды боярышника Поярковой' },
+  { src:'/images/plants/boyaryshnik/boyaryshnik-petushya-shpora-i-rozovyy.jpg', title:'Боярышник Петушья шпора и розовый', alt:'Красный и розовый боярышник' },
+  { src:'/images/plants/boyaryshnik/boyaryshnik-kitayskiy.jpg', title:'Неколючий китайский боярышник', alt:'Плоды неколючего китайского боярышника' },
+  { src:'/images/plants/boyaryshnik/boyaryshnik-poyarkovoy.jpg', title:'Неколючий боярышник Поярковой', alt:'Плоды неколючего боярышника Поярковой' },
+  { src:'/images/plants/pion-drevovidnyy/pion-drevovidnyy-mahrovyy.jpg', title:'Махровый древовидный пион', alt:'Цветок махрового древовидного пиона' },
+  { src:'/images/plants/ezhevika/ezhevika-black-gem.jpg', title:'Ежевика Блэк Джем', alt:'Плоды ежевики Блэк Джем' },
+  { src:'/images/plants/ezhevika/ezhevika-thornfree.jpg', title:'Ежевика Торнфри', alt:'Плоды ежевики Торнфри' },
+  { src:'/images/plants/ezhevika/ezhevika-freedom.jpg', title:'Ежевика Фридом', alt:'Плоды ежевики Фридом' },
+  { src:'/images/plants/kivi/kivi-kievskaya-krupnoplodnaya.jpg', title:'Киви Киевская крупноплодная', alt:'Плоды киви Киевская крупноплодная' },
+  { src:'/images/plants/kivi/kivi-krasnoplodnoe.jpg', title:'Киви красноплодное', alt:'Красноплодное киви в саду' },
+  { src:'/images/plants/kivi/kivi-moskovskiy-kolbasinoy.jpg', title:'Киви московский имени Колбасиной', alt:'Плоды киви московского имени Колбасиной' },
+  { src:'/images/plants/kizil/kizil.jpg', title:'Кизил', alt:'Плоды кизила в саду Владимира' },
+  { src:'/images/plants/limonnik-kitayskiy/limonnik-kitayskiy.jpg', title:'Китайский лимонник', alt:'Плоды китайского лимонника' },
+  { src:'/images/plants/kryzhovnik/kryzhovnik-nekolyuchiy.jpg', title:'Крыжовник неколючий', alt:'Плоды неколючего крыжовника' },
+  { src:'/images/plants/krymskie-podsnezhniki/krymskie-podsnezhniki-pod-snegom.jpg', title:'Крымские подснежники под снегом', alt:'Крымские подснежники цветут под снегом' },
+  { src:'/images/plants/malina/malina-joan-j.jpg', title:'Малина Джоан Джей', alt:'Плоды бесшипной малины Джоан Джей' },
+  { src:'/images/plants/malina/malina-joan-j-sneg.jpg', title:'Малина Джоан Джей на фоне снега', alt:'Малина Джоан Джей на фоне снега' },
+  { src:'/images/plants/malina/malina-gestiya.jpg', title:'Малина Гестия', alt:'Плоды ранней бесшипной малины Гестия' },
+  { src:'/images/gallery/med-iz-alpiyskogo-ulya.jpg', title:'Мёд из альпийского улья', alt:'Мёд из альпийского улья Владимира' },
+  { src:'/images/experiments/kivi-stratona/failed-graft-on-arguta.jpg', title:'Неудавшаяся прививка киви Стратона на аргуту', alt:'Результат неудавшейся прививки киви Стратона на актинидию аргуту' },
+  { src:'/images/plants/oreh-ideal/oreh-ideal.jpg', title:'Орех Идеал', alt:'Орех сорта Идеал из сада' },
+  { src:'/images/plants/pavlovniya/pavlovniya.jpg', title:'Павловния', alt:'Павловния в саду Владимира' },
+  { src:'/images/plants/marakuya-severnaya/pervyy-plod-marakuyi-severnoy.jpg', title:'Первый плод Северной Маракуйи', alt:'Первый плод растения Северная Маракуйя' },
+  { src:'/images/plants/persik-solnechnyy-donbass/persik-solnechnyy-donbass.jpg', title:'Персик Солнечный Донбасс', alt:'Плод персика Солнечный Донбасс' },
+  { src:'/images/plants/lagenariya/tykva-lagenariya.jpg', title:'Тыква лагенария', alt:'Плод лагенарии в саду' },
+  { src:'/images/plants/marakuya-severnaya/cvetet-marakuya-severnaya.jpg', title:'Цветёт Северная Маракуйя', alt:'Цветение Северной Маракуйи' },
+  { src:'/images/plants/shelkovica/shelkovica-krupnoplodnaya.jpg', title:'Шелковица крупноплодная', alt:'Плоды крупноплодной шелковицы' },
+  { src:'/images/plants/krasnomyakotnye-yabloni/yabloko-krasnomyakotnoe-2.jpg', title:'Красномякотное яблоко — архивный снимок', alt:'Красномякотное яблоко из сада Владимира' },];
+const videos = [{ src:'/images/gallery/kivi-2016.mp4', title:'Киви в саду, 2016 год' }];
+---
+<BaseLayout title="Галерея" description="Фотолетопись сада Владимира Денисова: растения, плоды и эксперименты.">
+  <PageHero eyebrow="Фотолетопись" title="Галерея" intro="Оригинальные фотографии из сада Владимира: растения, плоды, цветение и этапы экспериментов." note="Подписи и определения будут уточняться вместе с автором."/>
+  <section class="section"><div class="wrap"><div class="gallery-grid">{photos.map((photo,index)=><figure class:list={['gallery-item',{'gallery-item--wide':index===0||index===10}]}><img src={photo.src} alt={photo.alt} loading={index<3?'eager':'lazy'} decoding="async"/><figcaption><h2>{photo.title}</h2><p>Авторская фотография Владимира Денисова.</p></figcaption></figure>)}</div><section class="video-gallery"><h2>Видеоархив</h2>{videos.map((video)=><figure><video controls preload="metadata"><source src={video.src} type="video/mp4"/>Ваш браузер не поддерживает видео.</video><figcaption>{video.title}</figcaption></figure>)}</section></div></section>
+</BaseLayout>
+<style>.gallery-grid{columns:3 280px;column-gap:1.5rem}.gallery-item{break-inside:avoid;margin:0 0 1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--line)}.gallery-item img{width:100%;height:auto;border-radius:var(--radius);background:var(--paper-2)}.gallery-item h2{margin:.8rem 0 .25rem;font-size:1.2rem}.gallery-item p{margin:0;color:var(--muted);font-size:.8rem}.video-gallery{margin-top:4rem}.video-gallery video{width:min(100%,860px);max-height:70vh;background:#102b20;border-radius:var(--radius)}.video-gallery figure{margin:1.5rem 0}.video-gallery figcaption{margin-top:.6rem;color:var(--muted)}</style>

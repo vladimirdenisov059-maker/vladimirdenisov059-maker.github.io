@@ -1,0 +1,29 @@
+---
+import { site } from '@/config/site';
+---
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div>
+      <p class="eyebrow">Авторский проект</p>
+      <h2>{site.name}</h2>
+      <p>Наблюдения, эксперименты и реальные результаты выращивания растений в условиях Донбасса.</p>
+    </div>
+    <div>
+      <h3>Разделы</h3>
+      <a href="/plants/">Растения</a><a href="/experiments/">Эксперименты</a><a href="/articles/">Статьи</a><a href="/calendar/">Календарь</a>
+    </div>
+    <div>
+      <h3>Информация</h3>
+      <a href="/contacts/">Контакты</a><a href="/legal/privacy/">Конфиденциальность</a><a href="/legal/materials/">Использование материалов</a>
+    </div>
+    <div>
+      <h3>Размер текста</h3>
+      <div class="font-control" aria-label="Размер текста">
+        <button type="button" data-font-size="normal" aria-pressed="true">А</button>
+        <button type="button" data-font-size="large" aria-pressed="false">А+</button>
+      </div>
+      <div class="social-links">{site.social.map((item) => <a href={item.url} target="_blank" rel="me noopener">{item.label}</a>)}</div>
+    </div>
+  </div>
+  <div class="wrap footer-bottom"><span>© {new Date().getFullYear()} {site.author}</span><span>Факты из личного сада, без рекламных обещаний</span></div>
+</footer>

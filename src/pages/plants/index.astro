@@ -1,0 +1,5 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro'; import PageHero from '@/components/PageHero.astro'; import PlantCard from '@/components/PlantCard.astro'; import FilterPanel from '@/components/FilterPanel.astro'; import { plants } from '@/data/plants';
+const categories=[...new Set(plants.map((plant)=>plant.category))];
+---
+<BaseLayout title="Растения" description="Каталог растений из личного сада Владимира Денисова: культуры, сорта и подтверждённые наблюдения."><PageHero eyebrow="Каталог сада" title="Растения" intro="Культуры и сорта, которые Владимир выращивает или испытывает в условиях Донбасса." note="Численные характеристики публикуются только после сверки с записями автора."/><section class="section"><div class="wrap"><FilterPanel categories={categories} noun="растений"/><div class="cards-grid">{plants.map((plant)=><PlantCard plant={plant}/>)}</div></div></section></BaseLayout>

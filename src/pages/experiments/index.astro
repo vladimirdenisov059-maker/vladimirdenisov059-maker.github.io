@@ -1,0 +1,4 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro'; import PageHero from '@/components/PageHero.astro'; import ExperimentCard from '@/components/ExperimentCard.astro'; import { experiments } from '@/data/experiments';
+---
+<BaseLayout title="Эксперименты" description="Многолетние садовые эксперименты Владимира Денисова с временными шкалами и честными результатами."><PageHero eyebrow="Дневники наблюдений" title="Эксперименты" intro="Истории, где важен не быстрый совет, а вся цепочка: посадка, зимовка, повреждения, восстановление и результат." note="Неудача остаётся результатом, если она точно описана."/><section class="section section--dark"><div class="wrap"><div class="experiment-list">{experiments.map((experiment,index)=><ExperimentCard experiment={experiment} index={index+1}/>)}</div></div></section></BaseLayout>

@@ -1,0 +1,12 @@
+* text=auto
+*.astro text eol=lf
+*.ts text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary
+*.avif binary
+*.mp4 binary

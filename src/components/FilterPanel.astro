@@ -1,0 +1,40 @@
+---
+interface Props { categories: string[]; noun?: string }
+const { categories, noun = 'материалов' } = Astro.props;
+---
+<div class="filter-panel" data-filter-panel>
+  <label class="search-field"><span class="sr-only">Поиск</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input type="search" placeholder="Поиск по названию и теме" data-search-input /></label>
+  <div class="filter-buttons" aria-label="Фильтр по категориям">
+    <button type="button" class="is-active" data-category="all" aria-pressed="true">Все</button>
+    {categories.map((category) => <button type="button" data-category={category} aria-pressed="false">{category}</button>)}
+  </div>
+  <p class="filter-result" aria-live="polite"><span data-result-count></span> {noun}</p>
+</div>
+<script>
+  document.querySelectorAll<HTMLElement>('[data-filter-panel]').forEach((panel) => {
+    const container = panel.parentElement;
+    const cards = Array.from(container?.querySelectorAll<HTMLElement>('[data-search]') ?? []);
+    const input = panel.querySelector<HTMLInputElement>('[data-search-input]');
+    const buttons = panel.querySelectorAll<HTMLButtonElement>('[data-category]');
+    const result = panel.querySelector<HTMLElement>('[data-result-count]');
+    let category = 'all';
+    const update = () => {
+      const query = (input?.value ?? '').trim().toLowerCase();
+      let visible = 0;
+      cards.forEach((card) => {
+        const matchSearch = (card.dataset.search ?? '').includes(query);
+        const matchCategory = category === 'all' || card.dataset.category === category;
+        card.hidden = !(matchSearch && matchCategory);
+        if (!card.hidden) visible += 1;
+      });
+      if (result) result.textContent = String(visible);
+    };
+    input?.addEventListener('input', update);
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      category = button.dataset.category ?? 'all';
+      buttons.forEach((item) => { item.classList.toggle('is-active', item === button); item.setAttribute('aria-pressed', String(item === button)); });
+      update();
+    }));
+    update();
+  });
+</script>

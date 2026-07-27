@@ -1,0 +1,7 @@
+---
+interface Props { label?: string; image?: string; alt?: string; ratio?: 'landscape' | 'portrait' | 'square'; eager?: boolean }
+const { label = 'Авторская фотография будет добавлена', image, alt = '', ratio = 'landscape', eager = false } = Astro.props;
+---
+<figure class:list={['photo', `photo--${ratio}`, { 'photo--placeholder': !image }]}>
+  {image ? <img src={image} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" /> : <div class="photo-empty"><svg viewBox="0 0 80 80" aria-hidden="true"><path d="M40 69V30m0 17c-15 0-23-10-24-25 15-1 25 6 24 25Zm0-8c13 0 21-9 23-22-14-1-23 6-23 22Z"/></svg><span>{label}</span></div>}
+</figure>

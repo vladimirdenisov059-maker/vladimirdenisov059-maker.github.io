@@ -1,0 +1,62 @@
+---
+import Header from '@/components/Header.astro';
+import Footer from '@/components/Footer.astro';
+import { site } from '@/config/site';
+import '@/styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string;
+  type?: 'website' | 'article';
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const { title, description = site.description, image, type = 'website', jsonLd } = Astro.props;
+const pageTitle = title ? `${title} — ${site.shortName}` : `${site.name} — опыт садоводства в Донбассе`;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin);
+const socialImage = image ? new URL(image, canonical) : undefined;
+---
+
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#173d2d" />
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'self'; upgrade-insecure-requests" />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="application/rss+xml" title={site.name} href="/rss.xml" />
+    <meta property="og:type" content={type} />
+    <meta property="og:locale" content={site.locale} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {socialImage && <meta property="og:image" content={socialImage} />}
+    <title>{pageTitle}</title>
+    {jsonLd && <script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Перейти к содержанию</a>
+    <Header />
+    <main id="main"><slot /></main>
+    <Footer />
+    <script>
+      const root = document.documentElement;
+      const savedSize = localStorage.getItem('garden-font-size');
+      if (savedSize) root.dataset.fontSize = savedSize;
+      document.querySelectorAll('[data-font-size]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const size = button.getAttribute('data-font-size') ?? 'normal';
+          root.dataset.fontSize = size;
+          localStorage.setItem('garden-font-size', size);
+          document.querySelectorAll('[data-font-size]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+        });
+      });
+    </script>
+  </body>
+</html>

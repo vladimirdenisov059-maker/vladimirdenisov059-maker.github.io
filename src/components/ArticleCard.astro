@@ -1,0 +1,15 @@
+---
+import type { Article } from '@/data/types';
+import PhotoPlaceholder from './PhotoPlaceholder.astro';
+interface Props { article: Article }
+const { article } = Astro.props;
+---
+<article class="card article-card" data-search={`${article.title} ${article.category} ${article.tags.join(' ')}`.toLowerCase()} data-category={article.category}>
+  <a class="card-media" href={`/articles/${article.slug}/`} tabindex="-1"><PhotoPlaceholder label={article.title} image={article.coverImage} alt={article.coverImage ? article.title : ''} /></a>
+  <div class="card-body">
+    <div class="card-meta"><span>{article.category}</span><span>{article.readingTime} мин</span></div>
+    <h2><a href={`/articles/${article.slug}/`}>{article.title}</a></h2>
+    <p>{article.excerpt}</p>
+    <span class="text-link">Читать материал <span aria-hidden="true">→</span></span>
+  </div>
+</article>
