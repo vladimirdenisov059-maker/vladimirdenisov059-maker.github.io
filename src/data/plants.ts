@@ -66,9 +66,11 @@ export const plants: Plant[] = [
     personalNotes: 'Подпись второго снимка «вес» требует расшифровки автора.', advantages: ['Два авторских снимка'], disadvantages: ['Характеристики ещё не оцифрованы'], relatedArticles: [], confirmationNeeded: ['Происхождение сорта', 'Смысл подписи «вес»', 'Срок созревания'],
   },
   {
-    id: 'dogwood', slug: 'kizil', name: 'Кизил', category: 'Плодовые', description: 'Кизил, который, по наблюдению автора, каждый год цветёт под снегом.',
-    images: ['/images/plants/kizil/kizil-cvetet-pod-snegom.jpg','/images/plants/kizil/kizil.jpg'], status: 'плодоносит', experimental: false, personalNotes: 'Фотография фиксирует раннее цветение в снежных условиях.',
-    advantages: ['Регулярное цветение наблюдается автором'], disadvantages: ['Сорт не указан'], relatedArticles: [], confirmationNeeded: ['Сорт', 'Год фотографии', 'Срок созревания'],
+    id: 'dogwood', slug: 'kizil', name: 'Кизил', category: 'Плодовые', description: 'Кизил, который, по наблюдению автора, каждый год цветёт под снегом. На одном деревце привиты разные сорта; урожайность на прививках кратно выше.',
+    images: ['/images/plants/kizil/kizil-cvetet-pod-snegom.jpg','/images/plants/kizil/kizil.jpg'],
+    videos: [{ src: '/images/plants/kizil/kizil-privivki-sortov-2026.mp4', title: 'Разные сорта кизила на одном деревце: урожайность прививок', poster: '/images/plants/kizil/kizil-privivki-sortov-2026.jpg' }],
+    status: 'плодоносит', experimental: false, personalNotes: 'Фотографии фиксируют раннее цветение под снегом, а авторское видео показывает разные сорта на одном деревце и кратно более высокую урожайность на прививках.',
+    advantages: ['Регулярное цветение наблюдается автором', 'Прививка разных сортов улучшает завязывание плодов', 'Урожайность на прививках кратно выше'], disadvantages: ['Названия привитых сортов ещё не указаны'], relatedArticles: [], confirmationNeeded: ['Названия привитых сортов', 'Год фотографии', 'Срок созревания'],
   },
   {
     id: 'paulownia', slug: 'pavlovniya', name: 'Павловния', category: 'Прочие', description: 'Павловния в саду Владимира; добавлена фотография листа.',

@@ -18,7 +18,7 @@ export const experiments: Experiment[] = [
     summary: 'Наблюдение за прививкой гибридной хурмы на виргинском подвое «Белогорье».',
     plantIds: ['persimmon-wonderful'], status: 'продолжается', goal: 'Зафиксировать развитие, зимовку, цветение и перспективу плодоношения прививки.',
     timeline: [{ year: 2026, title: 'Цветение прививки', description: 'Прививка цвела. Точная дата и фотодокументация ожидаются от автора.', images: [] }],
-    images: ['/images/plants/hurma-wonderful/hurma-wonderful-cvetenie.jpg'], observations: ['Цветение подтверждено автором и фотографией.'], results: [], problems: ['Нет подтверждённого плодоношения.'],
+    images: ['/images/plants/hurma-wonderful/hurma-wonderful-cvetenie.jpg'], observations: ['Цветение подтверждено автором и фотографией.'], results: [], problems: ['Плодоношение конкретной прививки Wonderful пока не подтверждено.'],
     nextSteps: ['Уточнить написание названия сорта.', 'Добавить дату прививки и фотографии по сезонам.'], relatedArticles: [],
   },
 ];

@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Проверки: `npm run check`, `npm run lint`, `npm run build`. Production preview: `npm run preview`.
+Проверки: `npm run check`, `npm run lint`, `npm run build`. Production preview: `npm run preview`. Для проверки Cloudflare Pages Function: `npm run preview:cloudflare`.
 
 ## Структура
 
@@ -34,7 +34,9 @@ npm run dev
 
 ## Размещение
 
-Папка `dist` после `npm run build` подходит для Cloudflare Pages, Netlify, GitHub Pages, Vercel Static или обычного недорогого хостинга. Для первой версии сервер и база данных не нужны.
+Основной сайт публикуется на GitHub Pages. Только API генератора размещается отдельно в Cloudflare Pages, где зашифрованно хранится `PROXYAPI_KEY`. Пошаговая настройка описана в `CLOUDFLARE_DEPLOY.md`.
+
+Папка `dist` после `npm run build` публикуется GitHub Actions. Cloudflare получает только содержимое `cloudflare-api-public` и функцию из `functions/api/generate-post.ts`.
 
 ## Перед публикацией
 

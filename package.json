@@ -8,7 +8,9 @@
     "build": "astro check && astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "preview:cloudflare": "wrangler pages dev cloudflare-api-public --port 8788",
+    "test:generator": "node --experimental-strip-types tests/generate-post.mjs"
   },
   "dependencies": {
     "@astrojs/rss": "latest",
@@ -22,6 +24,7 @@
     "eslint-plugin-astro": "latest",
     "globals": "latest",
     "typescript": "latest",
-    "typescript-eslint": "latest"
+    "typescript-eslint": "latest",
+    "wrangler": "^4.116.0"
   }
 }

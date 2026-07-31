@@ -1,0 +1,137 @@
+---
+const generatorApiUrl = import.meta.env.PUBLIC_GENERATOR_API_URL || '/api/generate-post';
+---
+<section class="section post-generator" aria-labelledby="post-generator-title">
+  <div class="wrap generator-grid">
+    <div class="generator-intro">
+      <p class="eyebrow">Совет для вашего сада</p>
+      <h2 id="post-generator-title">О каком растении хотите узнать?</h2>
+      <p>Введите название — искусственный интеллект подготовит короткий пост о выращивании растения с учётом жары, засухи, морозов и возвратных заморозков Донбасса.</p>
+      <p class="generator-note">Ответ носит справочный характер. Учитывайте микроклимат участка и состояние конкретного растения.</p>
+    </div>
+
+    <div class="generator-card">
+      <form class="generator-form" data-generator-form data-generator-endpoint={generatorApiUrl}>
+        <label for="plant-name">Название растения</label>
+        <div class="generator-controls">
+          <input id="plant-name" name="plant" type="text" minlength="2" maxlength="60" autocomplete="off" placeholder="Например, хурма или киви" required />
+          <button class="button" type="submit">Создать пост</button>
+        </div>
+        <p class="generator-status" data-generator-status aria-live="polite"></p>
+      </form>
+
+      <article class="generator-result" data-generator-result hidden tabindex="-1" aria-live="polite">
+        <div class="generator-result-head">
+          <span data-generator-source>Готовый пост</span>
+          <button class="copy-button" type="button" data-copy-post>Копировать</button>
+        </div>
+        <div class="generator-text" data-generator-text></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>('[data-generator-form]');
+  const endpoint = form?.dataset.generatorEndpoint || '/api/generate-post';
+  const input = form?.querySelector<HTMLInputElement>('input[name="plant"]');
+  const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const status = document.querySelector<HTMLElement>('[data-generator-status]');
+  const result = document.querySelector<HTMLElement>('[data-generator-result]');
+  const text = document.querySelector<HTMLElement>('[data-generator-text]');
+  const copyButton = document.querySelector<HTMLButtonElement>('[data-copy-post]');
+  const source = document.querySelector<HTMLElement>('[data-generator-source]');
+
+  const setStatus = (message: string, isError = false) => {
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.error = String(isError);
+  };
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const plant = input?.value.trim() ?? '';
+    if (plant.length < 2) {
+      setStatus('Введите название растения.', true);
+      input?.focus();
+      return;
+    }
+
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = 'Создаём…';
+    }
+    setStatus('Готовим рекомендации для условий Донбасса…');
+    if (result) result.hidden = true;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plant }),
+      });
+      const data = await response.json() as { post?: string; error?: string; experienceBased?: boolean; matchedPlant?: string | null };
+      if (!response.ok || !data.post) throw new Error(data.error || 'Не удалось создать пост.');
+
+      if (text) {
+        text.replaceChildren(...data.post.split(/\n{2,}/).map((paragraph) => {
+          const node = document.createElement('p');
+          node.textContent = paragraph;
+          return node;
+        }));
+      }
+      if (source) {
+        source.textContent = data.experienceBased && data.matchedPlant
+          ? `Опыт сада: ${data.matchedPlant}`
+          : 'Общая справка';
+      }
+      if (result) result.hidden = false;
+      setStatus(data.experienceBased
+        ? 'Пост основан на опубликованном опыте Владимира; общие рекомендации отделены.'
+        : 'Личного опыта по этому растению в архиве нет — создана общая справка.');
+      result?.focus();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Произошла ошибка. Попробуйте позже.', true);
+    } finally {
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = 'Создать пост';
+      }
+    }
+  });
+
+  copyButton?.addEventListener('click', async () => {
+    const post = text?.innerText.trim();
+    if (!post) return;
+    try {
+      await navigator.clipboard.writeText(post);
+      copyButton.textContent = 'Скопировано';
+      window.setTimeout(() => { copyButton.textContent = 'Копировать'; }, 1800);
+    } catch {
+      setStatus('Не удалось скопировать автоматически. Выделите текст вручную.', true);
+    }
+  });
+</script>
+
+<style>
+  .post-generator{background:var(--paper-2)}
+  .generator-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:clamp(2rem,7vw,6rem);align-items:start}
+  .generator-intro h2{max-width:620px}
+  .generator-intro>p:not(.eyebrow){max-width:600px;color:var(--muted)}
+  .generator-note{padding-left:1rem;border-left:3px solid var(--honey);font-size:.85rem}
+  .generator-card{padding:clamp(1.2rem,4vw,2.2rem);border:1px solid var(--line);border-radius:var(--radius);background:var(--white);box-shadow:var(--shadow)}
+  .generator-form label{display:block;margin-bottom:.6rem;color:var(--forest);font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .generator-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.7rem}
+  .generator-controls input{min-height:3rem;padding:.7rem 1rem;border:1px solid var(--line);border-radius:999px;color:var(--ink);background:var(--paper)}
+  .generator-controls input:focus{outline:3px solid rgba(216,168,78,.45);border-color:var(--forest)}
+  .generator-controls button:disabled{cursor:wait;opacity:.65;transform:none}
+  .generator-status{min-height:1.6em;margin:.7rem 0 0;color:var(--muted);font-size:.82rem}
+  .generator-status[data-error="true"]{color:var(--apple)}
+  .generator-result{margin-top:1.4rem;padding-top:1.2rem;border-top:1px solid var(--line);outline:none}
+  .generator-result-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1rem;color:var(--apple);font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+  .copy-button{padding:.4rem .75rem;border:1px solid var(--line);border-radius:999px;color:var(--forest);background:transparent;cursor:pointer;font-size:.75rem;font-weight:700;text-transform:none;letter-spacing:0}
+  .generator-text{white-space:pre-wrap}
+  .generator-text p{margin:0 0 1em}
+  .generator-text p:last-child{margin-bottom:0}
+  @media(max-width:800px){.generator-grid{grid-template-columns:1fr}.generator-controls{grid-template-columns:1fr}.generator-controls .button{width:100%}}
+</style>

@@ -12,6 +12,10 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  PUBLIC_SITE_URL: https://vladimirdenisov059-maker.github.io
+  PUBLIC_GENERATOR_API_URL: https://gardens-of-donbas-api.pages.dev/api/generate-post
+
 jobs:
   build:
     runs-on: ubuntu-latest

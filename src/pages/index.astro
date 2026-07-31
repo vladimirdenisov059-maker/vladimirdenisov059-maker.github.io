@@ -4,6 +4,7 @@ import PhotoPlaceholder from '@/components/PhotoPlaceholder.astro';
 import PlantCard from '@/components/PlantCard.astro';
 import ArticleCard from '@/components/ArticleCard.astro';
 import ExperimentCard from '@/components/ExperimentCard.astro';
+import PostGenerator from '@/components/PostGenerator.astro';
 import { plants } from '@/data/plants';
 import { articles } from '@/data/articles';
 import { experiments } from '@/data/experiments';
@@ -21,6 +22,8 @@ const personLd = { '@context':'https://schema.org', '@type':'Person', name:site.
   </section>
 
   <section class="section intro-section"><div class="wrap intro-grid"><p class="eyebrow">О проекте</p><h2>Не пересказ чужих советов,<br/>а следы прожитых сезонов</h2><div><p>Здесь будут собраны фотографии, даты, сорта и наблюдения Владимира — вместе с удачами, ошибками и вопросами, на которые сад ещё не ответил.</p><a class="text-link" href="/about/">Познакомиться с автором →</a></div></div></section>
+
+  <PostGenerator />
 
   <section class="section section--dark"><div class="wrap"><div class="section-head"><div><p class="eyebrow">Долгие истории</p><h2>Эксперименты</h2></div><p>Некоторые ответы требуют не одного сезона, а десятилетий наблюдений.</p></div><div class="experiment-list">{experiments.map((experiment,index) => <ExperimentCard experiment={experiment} index={index+1} />)}</div><p style="margin-top:2rem"><a class="button button--light" href="/experiments/">Все эксперименты</a></p></div></section>
 

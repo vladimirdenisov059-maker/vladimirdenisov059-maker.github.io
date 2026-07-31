@@ -10,7 +10,7 @@ export interface Article {
 
 export interface Plant {
   id: string; slug: string; name: string; latinName?: string; category: PlantCategory;
-  variety?: string; description: string; images: string[]; yearsInGarden?: number;
+  variety?: string; description: string; images: string[]; videos?: { src: string; title: string; poster?: string }[]; yearsInGarden?: number;
   status: 'плодоносит' | 'наблюдение' | 'эксперимент'; floweringPeriod?: string;
   harvestPeriod?: string; pollination?: string; winterHardiness?: string;
   fruitSize?: string; taste?: string; yield?: string; thornless?: boolean;

@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gardens-of-donbas-api",
+  "compatibility_date": "2026-07-30",
+  "pages_build_output_dir": "./cloudflare-api-public",
+  "secrets": {
+    "required": ["PROXYAPI_KEY"]
+  }
+}
