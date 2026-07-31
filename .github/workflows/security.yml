@@ -26,5 +26,7 @@ jobs:
         run: npm audit --audit-level=moderate
       - name: Lint
         run: npm run lint
+      - name: API tests
+        run: npm test
       - name: Type-check and build
         run: npm run build

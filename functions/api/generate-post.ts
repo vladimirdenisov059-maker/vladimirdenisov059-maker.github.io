@@ -62,7 +62,7 @@ const findPlantRecords = (query: string) => {
   );
 };
 
-const buildGardenEvidence = (query: string) => {
+export const buildGardenEvidence = (query: string) => {
   const records = findPlantRecords(query);
   const publicFacts = records.map((record) => ({
     name: record.name,

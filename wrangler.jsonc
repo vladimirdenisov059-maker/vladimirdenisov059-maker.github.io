@@ -4,6 +4,6 @@
   "compatibility_date": "2026-07-30",
   "pages_build_output_dir": "./cloudflare-api-public",
   "secrets": {
-    "required": ["PROXYAPI_KEY"]
+    "required": ["PROXYAPI_KEY", "ADMIN_PASSWORD"]
   }
 }
