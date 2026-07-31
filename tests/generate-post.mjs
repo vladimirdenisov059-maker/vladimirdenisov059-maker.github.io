@@ -33,7 +33,11 @@ globalThis.fetch = async (_url, options) => {
   const upstreamBody = JSON.parse(options.body);
   const prompt = upstreamBody.contents[0].parts[0].text;
   capturedPrompts.push(prompt);
-  const subject = prompt.includes('Запрос посетителя: кизил.') ? 'Кизил' : 'Хурма';
+  const subject = prompt.includes('Запрос посетителя: кизил.')
+    ? 'Кизил'
+    : prompt.includes('Запрос посетителя: киви Стратона.')
+      ? 'Киви'
+      : 'Хурма';
   return Response.json({
     candidates: [{
       content: {
@@ -75,4 +79,20 @@ assert.match(dogwoodPrompt, /урожайность на прививках кр
 assert.match(dogwoodPrompt, /Авторское видео от 28 июля 2026 года/);
 assert.match(dogwoodPrompt, /полное имя «Владимир Денисов» употреби не более одного раза/);
 
-console.log('API smoke checks passed: persimmon and dogwood evidence are separated');
+const kiwiResponse = await onRequest({
+  request: makeRequest('киви Стратона'),
+  env: { PROXYAPI_KEY: 'test-only' },
+});
+const kiwiBody = await kiwiResponse.json();
+const kiwiPrompt = capturedPrompts.at(-1);
+assert.equal(kiwiResponse.status, 200);
+assert.match(kiwiBody.post, /Киви/);
+assert.equal(kiwiBody.experienceBased, true);
+assert.equal(kiwiBody.matchedPlant, 'Киви Стратона');
+assert.match(kiwiPrompt, /Общий опыт автора с киви Стратона длится около 22 лет/);
+assert.match(kiwiPrompt, /Первые примерно 15 лет автор высаживал саженцы, полученные от Стратона/);
+assert.match(kiwiPrompt, /Только после 2019 года автор высадил семена/);
+assert.match(kiwiPrompt, /22 года относятся ко всему опыту, состоящему из двух этапов/);
+assert.doesNotMatch(kiwiPrompt, /выращивается из семян около 22 лет/);
+
+console.log('API smoke checks passed: persimmon, dogwood and kiwi evidence are separated');
