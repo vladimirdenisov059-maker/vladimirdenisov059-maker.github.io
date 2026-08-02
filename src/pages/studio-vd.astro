@@ -115,6 +115,9 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
   import bridge from '@vkontakte/vk-bridge';
 
   const VK_APP_ID = 54704308;
+  const VK_APP_URL = 'https://vk.ru/app54704308';
+  const vkLaunchParams = new URLSearchParams(window.location.search);
+  const isVkMiniApp = vkLaunchParams.has('vk_app_id') || vkLaunchParams.has('vk_user_id') || vkLaunchParams.has('vk_platform');
   const form = document.querySelector<HTMLFormElement>('[data-owner-form]');
   const passwordInput = document.querySelector<HTMLInputElement>('#owner-password');
   const plantInput = document.querySelector<HTMLInputElement>('#owner-plant');
@@ -265,17 +268,33 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
   };
 
   const initializeVkMiniApp = async () => {
+    if (!isVkMiniApp) {
+      if (vkState) vkState.textContent = 'На сайте можно создавать и исправлять черновики. Для публикации откройте этот же редактор внутри ВКонтакте.';
+      if (vkConnectButton) {
+        vkConnectButton.disabled = false;
+        vkConnectButton.textContent = 'Открыть редактор во ВКонтакте';
+      }
+      return;
+    }
     try {
-      await bridge.send('VKWebAppInit');
+      await Promise.race([
+        bridge.send('VKWebAppInit'),
+        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('VK Mini App timeout')), 5000)),
+      ]);
       vkBridgeReady = true;
       if (vkConnectButton) vkConnectButton.disabled = false;
       if (vkState) vkState.textContent = 'Приложение ВК запущено. Нажмите кнопку ниже, чтобы подключить свою страницу.';
     } catch {
-      if (vkState) vkState.textContent = 'Для подключения страницы откройте редактор через приложение ВКонтакте.';
+      if (vkConnectButton) vkConnectButton.disabled = false;
+      if (vkState) vkState.textContent = 'ВКонтакте не ответил. Перезагрузите приложение и повторите подключение.';
     }
   };
 
   vkConnectButton?.addEventListener('click', async () => {
+    if (!isVkMiniApp) {
+      window.open(VK_APP_URL, '_blank', 'noopener,noreferrer');
+      return;
+    }
     const password = passwordInput?.value ?? '';
     if (password.length < 12) return setStatus(vkState, 'Сначала введите пароль владельца.', true);
     if (!vkBridgeReady) return setStatus(vkState, 'Откройте редактор через приложение ВКонтакте и повторите.', true);
