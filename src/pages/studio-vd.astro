@@ -541,9 +541,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         }
 
         const uploadFile = kind === 'photo' ? await preparePhotoForVk(item.file) : item.file;
-        const body = new FormData();
         const extension = uploadFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'photo' ? 'jpg' : 'mp4');
-        body.append(kind === 'photo' ? 'photo' : 'video_file', uploadFile, `garden-${kind}.${extension}`);
         const headers: Record<string, string> = {
           ...ownerHeaders(password),
           'X-File-Size': String(uploadFile.size),
@@ -552,9 +550,23 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
           ...(bridgeUploadUrl ? { 'X-VK-Upload-URL': bridgeUploadUrl } : {}),
         };
         if (bridgeUploadUrl) delete headers['X-VK-Access-Token'];
-        const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
-          method: 'POST', headers, body,
-        });
+        const uploadEndpoint = (form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media') + '?kind=' + kind;
+        let response: Response | null = null;
+        let networkError: unknown = null;
+        for (let attempt = 1; attempt <= 4; attempt += 1) {
+          const body = new FormData();
+          body.append(kind === 'photo' ? 'photo' : 'video_file', uploadFile, 'garden-' + kind + '.' + extension);
+          try {
+            response = await fetch(uploadEndpoint, { method: 'POST', headers, body });
+            break;
+          } catch (error) {
+            networkError = error;
+            if (attempt === 4) break;
+            setStatus(mediaStatus, 'Связь прервалась. Повторяем загрузку файла ' + (index + 1) + ' автоматически (' + (attempt + 1) + ' из 4)…');
+            await new Promise((resolve) => window.setTimeout(resolve, attempt * 1200));
+          }
+        }
+        if (!response) throw networkError ?? new Error('Нет связи с защищённым сервисом загрузки.');
         const data = await readApiJson<{ uploaded?: boolean; attachment?: string; uploadResult?: VkPhotoUploadResult; error?: string }>(response, `Не удалось прочитать ответ после загрузки файла «${item.file.name}».`);
         if (!response.ok || !data.uploaded) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
 
