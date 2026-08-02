@@ -240,6 +240,8 @@ assert.match(studioSource, /preparePhotoForVk/);
 assert.match(studioSource, /createImageBitmap/);
 assert.match(studioSource, /Повторяем загрузку файла/);
 assert.match(studioSource, /Повторяем безопасно с тем же номером запроса/);
+assert.match(studioSource, /slice\(0, 16\)/);
+assert.match(studioSource, /error_data/);
 assert.match(studioSource, /video\.save/);
 assert.doesNotMatch(studioSource, /fetch\(server\.upload_url/);
 assert.doesNotMatch(studioSource, /fetch\(video\.upload_url/);

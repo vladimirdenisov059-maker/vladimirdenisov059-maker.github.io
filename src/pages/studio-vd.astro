@@ -172,7 +172,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   let vkOwnerId: number | null = null;
   let vkBridgeReady = false;
   let busy = false;
-  let publishRequestId = crypto.randomUUID();
+  const createPublishRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  let publishRequestId = createPublishRequestId();
 
   const setStatus = (node: HTMLElement | null, message: string, isError = false) => {
     if (!node) return;
@@ -183,7 +184,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const selectedMode = () => publishModes.find((item) => item.checked)?.value ?? 'now';
   const resetApproval = (message = 'После изменений снова отметьте подтверждение.') => {
     if (approval) approval.checked = false;
-    publishRequestId = crypto.randomUUID();
+    publishRequestId = createPublishRequestId();
     updatePublishButton();
     setStatus(publishStatus, message);
     publishedLink?.replaceChildren();
@@ -448,7 +449,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       if (draftSource) draftSource.textContent = data.matchedPlant ? `Использован опубликованный опыт: ${data.matchedPlant}` : 'Черновик создан по добавленным вами наблюдениям.';
       if (!vkAccessToken) vkConfigured = data.vkConfigured === true;
       if (approval) approval.checked = false;
-      publishRequestId = crypto.randomUUID();
+      publishRequestId = createPublishRequestId();
       updateCounter(); updateScheduleMinimum(); updatePublishButton(); renderMedia();
       if (editorSection) editorSection.hidden = false;
       if (mediaSection) mediaSection.hidden = false;
@@ -484,6 +485,19 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   });
 
   const russianError = (error: unknown, fallback: string) => {
+    const bridgeError = error && typeof error === 'object' ? error as Record<string, unknown> : null;
+    const errorData = bridgeError?.error_data && typeof bridgeError.error_data === 'object'
+      ? bridgeError.error_data as Record<string, unknown>
+      : null;
+    const errorCode = errorData?.error_code ?? bridgeError?.error_code;
+    const errorText = [errorData?.error_msg, errorData?.error_reason, errorData?.error_description, bridgeError?.error_msg]
+      .flatMap((value) => Array.isArray(value) ? value : [value])
+      .find((value) => typeof value === 'string' && value.trim());
+    if (errorCode !== undefined || errorText) {
+      const codeText = errorCode !== undefined ? ` (код ${String(errorCode)})` : '';
+      const detail = typeof errorText === 'string' ? `: ${errorText.trim()}` : '';
+      return `ВКонтакте отклонил запрос${codeText}${detail}`;
+    }
     const message = error instanceof Error ? error.message.trim() : '';
     if (!message || /failed to fetch|load failed|networkerror|network request failed/i.test(message) || !/[А-ЯЁа-яё]/.test(message)) return fallback;
     return message;
