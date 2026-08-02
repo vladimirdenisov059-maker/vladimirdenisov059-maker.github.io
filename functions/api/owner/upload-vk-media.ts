@@ -55,11 +55,33 @@ const safeUploadUrl = (value: string | undefined) => {
 const uploadBody = async (request: Request, uploadUrl: URL) => {
   const contentType = request.headers.get('Content-Type') ?? '';
   if (!contentType.toLowerCase().startsWith('multipart/form-data;')) throw new Error('INVALID_MULTIPART');
-  return fetch(uploadUrl, {
+  if (!request.body) throw new Error('EMPTY_UPLOAD_BODY');
+
+  const contentLength = Number(request.headers.get('Content-Length') ?? '0');
+  const FixedLengthStreamCtor = (globalThis as typeof globalThis & {
+    FixedLengthStream?: new (length: number) => {
+      readable: ReadableStream<Uint8Array>;
+      writable: WritableStream<Uint8Array>;
+    };
+  }).FixedLengthStream;
+
+  if (!Number.isSafeInteger(contentLength) || contentLength <= 0 || !FixedLengthStreamCtor) {
+    return fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body: request.body,
+    });
+  }
+
+  const fixedBody = new FixedLengthStreamCtor(contentLength);
+  const piping = request.body.pipeTo(fixedBody.writable);
+  const uploading = fetch(uploadUrl, {
     method: 'POST',
     headers: { 'Content-Type': contentType },
-    body: request.body,
+    body: fixedBody.readable,
   });
+  const [response] = await Promise.all([uploading, piping]);
+  return response;
 };
 
 export const onRequest = async ({ request, env }: PagesContext): Promise<Response> => {

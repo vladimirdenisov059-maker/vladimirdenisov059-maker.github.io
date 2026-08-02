@@ -189,6 +189,7 @@ assert.equal(capturedWallParams.get('guid'), '123e4567-e89b-42d3-a456-4266141740
 assert.equal(capturedWallParams.get('access_token'), 'vk-test-token');
 
 const studioSource = readFileSync(new URL('../src/pages/studio-vd.astro', import.meta.url), 'utf8');
+const uploadSource = readFileSync(new URL('../functions/api/owner/upload-vk-media.ts', import.meta.url), 'utf8');
 assert.match(studioSource, /VKWebAppInit/);
 assert.match(studioSource, /VKWebAppGetAuthToken/);
 assert.match(studioSource, /X-VK-Access-Token/);
@@ -197,5 +198,7 @@ assert.doesNotMatch(studioSource, /fetch\(video\.upload_url/);
 assert.match(studioSource, /Пост не создан и не поставлен в очередь/);
 assert.match(studioSource, /Вложения прикреплены/);
 assert.match(studioSource, /failed to fetch\|load failed\|networkerror/);
+assert.match(uploadSource, /FixedLengthStream/);
+assert.match(uploadSource, /Content-Length/);
 
 console.log('Owner studio checks passed: authentication, VK Mini App connection, media uploads and scheduling');

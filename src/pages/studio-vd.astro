@@ -502,7 +502,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         const uploadedCount = attachments.length;
         const detail = russianError(error, 'Нет связи с защищённым сервисом загрузки. Проверьте интернет и повторите попытку.');
         setStatus(mediaStatus, `Файл «${item.file.name}» не загружен. ${detail}`, true);
-        throw new Error(`Публикация остановлена на загрузке вложений: файл «${item.file.name}» не загружен. ${uploadedCount ? `До сбоя загружено файлов: ${uploadedCount}. ` : ''}Пост не создан и не поставлен в очередь.`, { cause: error });
+        throw new Error(`Публикация остановлена на загрузке вложений: файл «${item.file.name}» не загружен. ${detail} ${uploadedCount ? `До сбоя загружено файлов: ${uploadedCount}. ` : ''}Пост не создан и не поставлен в очередь.`, { cause: error });
       }
       uploadedAttachments.set(item.id, attachment);
       attachments.push(attachment);
