@@ -66,10 +66,11 @@ const uploadBody = async (request: Request, uploadUrl: URL) => {
   }).FixedLengthStream;
 
   if (!Number.isSafeInteger(contentLength) || contentLength <= 0 || !FixedLengthStreamCtor) {
+    const bufferedBody = await request.arrayBuffer();
     return fetch(uploadUrl, {
       method: 'POST',
       headers: { 'Content-Type': contentType },
-      body: request.body,
+      body: bufferedBody,
     });
   }
 
