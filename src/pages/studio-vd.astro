@@ -5,6 +5,8 @@ const publicGeneratorUrl = import.meta.env.PUBLIC_GENERATOR_API_URL || '/api/gen
 const apiOrigin = publicGeneratorUrl.startsWith('http') ? new URL(publicGeneratorUrl).origin : '';
 const draftEndpoint = `${apiOrigin}/api/owner/generate-vk`;
 const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
+const statusEndpoint = `${apiOrigin}/api/owner/vk-status`;
+const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
 ---
 
 <BaseLayout title="Редактор Владимира" description="Закрытый редактор авторских публикаций Владимира Денисова.">
@@ -13,14 +15,14 @@ const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
       <header class="studio-heading">
         <p class="eyebrow">Личный кабинет</p>
         <h1>Редактор постов Владимира</h1>
-        <p>Здесь готовится подробный пост для ВКонтакте. Страница не указана в меню, а действия защищены паролем владельца.</p>
+        <p>Здесь готовится подробный пост для личной страницы ВКонтакте. Действия защищены паролем владельца.</p>
       </header>
 
       <div class="privacy-note" role="note">
-        <strong>Как это работает:</strong> сначала создаётся черновик, затем вы исправляете текст и отдельно подтверждаете публикацию. Пароль не сохраняется в браузере, черновик не хранится на сервере.
+        <strong>Как это работает:</strong> создайте черновик, исправьте текст, добавьте фотографии или видео, выберите публикацию сейчас либо по расписанию и только затем подтвердите отправку.
       </div>
 
-      <form class="studio-card access-card" data-owner-form data-draft-endpoint={draftEndpoint} data-publish-endpoint={publishEndpoint}>
+      <form class="studio-card access-card" data-owner-form data-draft-endpoint={draftEndpoint} data-publish-endpoint={publishEndpoint} data-status-endpoint={statusEndpoint} data-upload-endpoint={uploadEndpoint}>
         <section class="studio-step" aria-labelledby="step-access">
           <div class="step-number">Доступ</div>
           <h2 id="step-access">Пароль владельца</h2>
@@ -52,7 +54,7 @@ const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
 
       <section class="studio-card studio-step" data-editor-section hidden aria-labelledby="step-two">
         <div class="step-number">Шаг 2</div>
-        <h2 id="step-two">Проверить и исправить</h2>
+        <h2 id="step-two">Проверить и исправить текст</h2>
         <p class="draft-source" data-draft-source></p>
         <label for="vk-draft">Текст поста</label>
         <textarea id="vk-draft" rows="22" maxlength="15000" data-vk-draft></textarea>
@@ -66,15 +68,37 @@ const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
         </div>
       </section>
 
-      <section class="studio-card studio-step publish-step" data-publish-section hidden aria-labelledby="step-three">
+      <section class="studio-card studio-step" data-media-section hidden aria-labelledby="step-three">
         <div class="step-number">Шаг 3</div>
-        <h2 id="step-three">Одобрить и опубликовать</h2>
+        <h2 id="step-three">Добавить фотографии и видео</h2>
+        <p>Можно выбрать до 10 файлов. Фотографии: JPG, PNG или WebP до 25 МБ. Видео: MP4, WebM, MOV или MKV до 95 МБ.</p>
+        <label class="file-picker" for="vk-media">Выбрать фото или видео</label>
+        <input id="vk-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/x-matroska" multiple data-media-input />
+        <div class="media-grid" data-media-list></div>
+        <p class="studio-status" data-media-status aria-live="polite"></p>
+      </section>
+
+      <section class="studio-card studio-step publish-step" data-publish-section hidden aria-labelledby="step-four">
+        <div class="step-number">Шаг 4</div>
+        <h2 id="step-four">Выбрать время, одобрить и отправить</h2>
         <p data-vk-state>Проверяем подключение ВКонтакте…</p>
+
+        <fieldset class="publish-mode">
+          <legend>Когда опубликовать</legend>
+          <label><input type="radio" name="publish-mode" value="now" checked data-publish-mode /> Сразу после подтверждения</label>
+          <label><input type="radio" name="publish-mode" value="scheduled" data-publish-mode /> В выбранные дату и время</label>
+        </fieldset>
+        <div data-schedule-fields hidden>
+          <label for="publish-date">Дата и время публикации</label>
+          <input id="publish-date" type="datetime-local" data-publish-date />
+          <p class="field-help">После постановки в очередь компьютер можно выключить: запись опубликует сам ВКонтакте.</p>
+        </div>
+
         <label class="approval-row">
           <input type="checkbox" data-publish-approval />
-          <span>Я полностью проверил текст и одобряю его публикацию на моей странице ВКонтакте.</span>
+          <span>Я проверил текст, вложения, дату и время и одобряю публикацию на моей личной странице ВКонтакте.</span>
         </label>
-        <button class="button publish-button" type="button" data-publish-button disabled>Опубликовать в ВК</button>
+        <button class="button publish-button" type="button" data-publish-button disabled>Опубликовать сейчас</button>
         <p class="studio-status" data-publish-status aria-live="polite"></p>
         <p data-published-link></p>
       </section>
@@ -91,19 +115,30 @@ const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
   const generateButton = document.querySelector<HTMLButtonElement>('[data-generate-button]');
   const status = document.querySelector<HTMLElement>('[data-studio-status]');
   const editorSection = document.querySelector<HTMLElement>('[data-editor-section]');
+  const mediaSection = document.querySelector<HTMLElement>('[data-media-section]');
   const publishSection = document.querySelector<HTMLElement>('[data-publish-section]');
   const draft = document.querySelector<HTMLTextAreaElement>('[data-vk-draft]');
   const draftSource = document.querySelector<HTMLElement>('[data-draft-source]');
   const characterCount = document.querySelector<HTMLElement>('[data-character-count]');
   const copyButton = document.querySelector<HTMLButtonElement>('[data-copy-draft]');
   const downloadButton = document.querySelector<HTMLButtonElement>('[data-download-draft]');
+  const mediaInput = document.querySelector<HTMLInputElement>('[data-media-input]');
+  const mediaList = document.querySelector<HTMLElement>('[data-media-list]');
+  const mediaStatus = document.querySelector<HTMLElement>('[data-media-status]');
+  const scheduleFields = document.querySelector<HTMLElement>('[data-schedule-fields]');
+  const publishDate = document.querySelector<HTMLInputElement>('[data-publish-date]');
+  const publishModes = [...document.querySelectorAll<HTMLInputElement>('[data-publish-mode]')];
   const approval = document.querySelector<HTMLInputElement>('[data-publish-approval]');
   const publishButton = document.querySelector<HTMLButtonElement>('[data-publish-button]');
   const publishStatus = document.querySelector<HTMLElement>('[data-publish-status]');
   const vkState = document.querySelector<HTMLElement>('[data-vk-state]');
   const publishedLink = document.querySelector<HTMLElement>('[data-published-link]');
 
+  type MediaItem = { id: string; file: File; previewUrl: string };
+  let mediaItems: MediaItem[] = [];
+  const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
+  let busy = false;
   let publishRequestId = crypto.randomUUID();
 
   const setStatus = (node: HTMLElement | null, message: string, isError = false) => {
@@ -112,92 +147,150 @@ const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
     node.dataset.error = String(isError);
   };
 
-  const updateCounter = () => {
-    if (characterCount) characterCount.textContent = `${draft?.value.length ?? 0} знаков`;
-  };
-
-  const updatePublishButton = () => {
-    if (!publishButton) return;
-    publishButton.disabled = !vkConfigured || !approval?.checked || (draft?.value.trim().length ?? 0) < 100;
-  };
-
-  draft?.addEventListener('input', () => {
-    updateCounter();
+  const selectedMode = () => publishModes.find((item) => item.checked)?.value ?? 'now';
+  const resetApproval = (message = 'После изменений снова отметьте подтверждение.') => {
     if (approval) approval.checked = false;
     publishRequestId = crypto.randomUUID();
     updatePublishButton();
-    setStatus(publishStatus, 'После исправлений снова отметьте подтверждение.');
-    if (publishedLink) publishedLink.replaceChildren();
-  });
+    setStatus(publishStatus, message);
+    publishedLink?.replaceChildren();
+  };
+  const updateCounter = () => {
+    if (characterCount) characterCount.textContent = `${draft?.value.length ?? 0} знаков`;
+  };
+  const updatePublishButton = () => {
+    if (!publishButton) return;
+    const scheduledReady = selectedMode() === 'now' || Boolean(publishDate?.value);
+    publishButton.disabled = busy || !vkConfigured || !approval?.checked || !scheduledReady || (draft?.value.trim().length ?? 0) < 100;
+    publishButton.textContent = selectedMode() === 'scheduled' ? 'Поставить в очередь ВК' : 'Опубликовать сейчас';
+  };
+  const localDateTimeValue = (date: Date) => {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+  const updateScheduleMinimum = () => {
+    if (!publishDate) return;
+    publishDate.min = localDateTimeValue(new Date(Date.now() + 5 * 60 * 1000));
+    if (!publishDate.value) publishDate.value = localDateTimeValue(new Date(Date.now() + 30 * 60 * 1000));
+  };
+
+  const renderMedia = () => {
+    if (!mediaList) return;
+    mediaList.replaceChildren();
+    mediaItems.forEach((item, index) => {
+      const card = document.createElement('article');
+      card.className = 'media-card';
+      const preview = item.file.type.startsWith('image/') ? document.createElement('img') : document.createElement('video');
+      preview.src = item.previewUrl;
+      if (preview instanceof HTMLVideoElement) preview.controls = true;
+      preview.setAttribute('aria-label', item.file.name);
+      const info = document.createElement('div');
+      info.className = 'media-info';
+      const name = document.createElement('strong');
+      name.textContent = `${index + 1}. ${item.file.name}`;
+      const size = document.createElement('span');
+      size.textContent = `${(item.file.size / 1024 / 1024).toFixed(1)} МБ`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'remove-media';
+      remove.textContent = 'Убрать';
+      remove.addEventListener('click', () => {
+        URL.revokeObjectURL(item.previewUrl);
+        mediaItems = mediaItems.filter((candidate) => candidate.id !== item.id);
+        uploadedAttachments.delete(item.id);
+        renderMedia();
+        resetApproval();
+      });
+      info.append(name, size, remove);
+      card.append(preview, info);
+      mediaList.append(card);
+    });
+    setStatus(mediaStatus, mediaItems.length ? `Выбрано файлов: ${mediaItems.length}. Они загрузятся во ВКонтакте только после вашего подтверждения.` : 'Вложения не выбраны. Можно опубликовать только текст.');
+  };
+
+  const checkVkConnection = async (password: string) => {
+    if (!form?.dataset.statusEndpoint) return;
+    try {
+      const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: { Authorization: `Bearer ${password}` } });
+      const data = await response.json() as { configured?: boolean; name?: string; url?: string; error?: string };
+      vkConfigured = response.ok && data.configured === true;
+      if (vkState) {
+        vkState.textContent = vkConfigured
+          ? `Подключена личная страница ВК: ${data.name || 'владелец'}.`
+          : (data.error || 'ВКонтакте пока не подключён.');
+      }
+    } catch {
+      vkConfigured = false;
+      if (vkState) vkState.textContent = 'Не удалось проверить подключение ВКонтакте.';
+    }
+    updatePublishButton();
+  };
+
+  draft?.addEventListener('input', () => { updateCounter(); resetApproval(); });
   approval?.addEventListener('change', updatePublishButton);
+  publishModes.forEach((mode) => mode.addEventListener('change', () => {
+    if (scheduleFields) scheduleFields.hidden = selectedMode() !== 'scheduled';
+    updateScheduleMinimum();
+    resetApproval('Проверьте выбранный режим публикации и подтвердите его.');
+  }));
+  publishDate?.addEventListener('change', () => resetApproval('Проверьте новую дату и снова подтвердите публикацию.'));
+
+  mediaInput?.addEventListener('change', () => {
+    const incoming = [...(mediaInput.files ?? [])];
+    const errors: string[] = [];
+    incoming.forEach((file) => {
+      if (mediaItems.length >= 10) return errors.push('Можно добавить не более 10 файлов.');
+      const isPhoto = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      if (!isPhoto && !isVideo) return errors.push(`${file.name}: неподдерживаемый формат.`);
+      const limit = isPhoto ? 25 * 1024 * 1024 : 95 * 1024 * 1024;
+      if (file.size > limit) return errors.push(`${file.name}: файл слишком большой.`);
+      const key = `${file.name}:${file.size}:${file.lastModified}`;
+      if (mediaItems.some((item) => item.id === key)) return;
+      mediaItems.push({ id: key, file, previewUrl: URL.createObjectURL(file) });
+    });
+    mediaInput.value = '';
+    renderMedia();
+    resetApproval();
+    if (errors.length) setStatus(mediaStatus, errors.join(' '), true);
+  });
 
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const password = passwordInput?.value ?? '';
     const plant = plantInput?.value.trim() ?? '';
-    if (password.length < 12) {
-      setStatus(status, 'Введите пароль владельца длиной не менее 12 символов.', true);
-      passwordInput?.focus();
-      return;
-    }
-    if (plant.length < 2) {
-      setStatus(status, 'Введите название растения.', true);
-      plantInput?.focus();
-      return;
-    }
-
-    if (generateButton) {
-      generateButton.disabled = true;
-      generateButton.textContent = 'Создаём подробный черновик…';
-    }
+    if (password.length < 12) return setStatus(status, 'Введите пароль владельца длиной не менее 12 символов.', true);
+    if (plant.length < 2) return setStatus(status, 'Введите название растения.', true);
+    if (generateButton) { generateButton.disabled = true; generateButton.textContent = 'Создаём подробный черновик…'; }
     setStatus(status, 'Собираем ваш опыт и готовим текст для ВКонтакте…');
     if (editorSection) editorSection.hidden = true;
+    if (mediaSection) mediaSection.hidden = true;
     if (publishSection) publishSection.hidden = true;
-
     try {
       const response = await fetch(form.dataset.draftEndpoint || '/api/owner/generate-vk', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${password}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { Authorization: `Bearer ${password}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ plant, focus: focusInput?.value ?? '', notes: notesInput?.value ?? '' }),
       });
-      const data = await response.json() as {
-        post?: string;
-        error?: string;
-        matchedPlant?: string | null;
-        vkConfigured?: boolean;
-      };
+      const data = await response.json() as { post?: string; error?: string; matchedPlant?: string | null; vkConfigured?: boolean };
       if (!response.ok || !data.post) throw new Error(data.error || 'Не удалось создать черновик.');
-
       if (draft) draft.value = data.post;
-      if (draftSource) {
-        draftSource.textContent = data.matchedPlant
-          ? `Использован опубликованный опыт: ${data.matchedPlant}`
-          : 'Черновик создан по добавленным вами наблюдениям.';
-      }
+      if (draftSource) draftSource.textContent = data.matchedPlant ? `Использован опубликованный опыт: ${data.matchedPlant}` : 'Черновик создан по добавленным вами наблюдениям.';
       vkConfigured = data.vkConfigured === true;
-      if (vkState) {
-        vkState.textContent = vkConfigured
-          ? 'ВКонтакте подключён. После проверки текста подтвердите публикацию.'
-          : 'ВКонтакте пока не подключён. Черновик уже можно исправлять, сохранять и копировать.';
-      }
       if (approval) approval.checked = false;
       publishRequestId = crypto.randomUUID();
-      updateCounter();
-      updatePublishButton();
+      updateCounter(); updateScheduleMinimum(); updatePublishButton(); renderMedia();
       if (editorSection) editorSection.hidden = false;
+      if (mediaSection) mediaSection.hidden = false;
       if (publishSection) publishSection.hidden = false;
       setStatus(status, 'Черновик готов. Теперь внимательно проверьте и исправьте его.');
+      if (vkConfigured) await checkVkConnection(password);
+      else if (vkState) vkState.textContent = 'ВКонтакте пока не подключён. Черновик можно исправлять, сохранять и копировать.';
       editorSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
       setStatus(status, error instanceof Error ? error.message : 'Произошла ошибка.', true);
     } finally {
-      if (generateButton) {
-        generateButton.disabled = false;
-        generateButton.textContent = 'Создать черновик от моего имени';
-      }
+      if (generateButton) { generateButton.disabled = false; generateButton.textContent = 'Создать черновик от моего имени'; }
     }
   });
 
@@ -208,88 +301,107 @@ const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
       await navigator.clipboard.writeText(text);
       copyButton.textContent = 'Скопировано';
       window.setTimeout(() => { copyButton.textContent = 'Копировать'; }, 1800);
-    } catch {
-      setStatus(publishStatus, 'Не удалось скопировать автоматически. Выделите текст вручную.', true);
-    }
+    } catch { setStatus(publishStatus, 'Не удалось скопировать автоматически. Выделите текст вручную.', true); }
   });
-
   downloadButton?.addEventListener('click', () => {
     const text = draft?.value.trim() ?? '';
     if (!text) return;
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
-    link.download = `post-vk-${new Date().toISOString().slice(0, 10)}.txt`;
-    link.click();
+    link.href = url; link.download = `post-vk-${new Date().toISOString().slice(0, 10)}.txt`; link.click();
     URL.revokeObjectURL(url);
   });
+
+  const uploadMedia = async (password: string) => {
+    const attachments: string[] = [];
+    for (let index = 0; index < mediaItems.length; index += 1) {
+      const item = mediaItems[index];
+      const cached = uploadedAttachments.get(item.id);
+      if (cached) { attachments.push(cached); continue; }
+      const kind = item.file.type.startsWith('image/') ? 'photo' : 'video';
+      setStatus(mediaStatus, `Загружаем во ВКонтакте файл ${index + 1} из ${mediaItems.length}: ${item.file.name}`);
+      const body = new FormData();
+      body.append(kind === 'photo' ? 'photo' : 'video_file', item.file, item.file.name);
+      const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${password}`,
+          'X-File-Size': String(item.file.size),
+          'X-File-Type': item.file.type,
+          'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
+        },
+        body,
+      });
+      const data = await response.json() as { uploaded?: boolean; attachment?: string; error?: string };
+      if (!response.ok || !data.uploaded || !data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
+      uploadedAttachments.set(item.id, data.attachment);
+      attachments.push(data.attachment);
+    }
+    if (mediaItems.length) setStatus(mediaStatus, 'Все выбранные файлы загружены во ВКонтакте.');
+    return attachments;
+  };
 
   publishButton?.addEventListener('click', async () => {
     const message = draft?.value.trim() ?? '';
     const password = passwordInput?.value ?? '';
-    if (!approval?.checked || !vkConfigured || message.length < 100) return;
-    if (!window.confirm('Опубликовать этот текст на вашей странице ВКонтакте прямо сейчас?')) return;
+    if (!approval?.checked || !vkConfigured || message.length < 100 || busy) return;
+    let publishAt: number | null = null;
+    let confirmation = 'Опубликовать этот пост на вашей личной странице ВКонтакте прямо сейчас?';
+    if (selectedMode() === 'scheduled') {
+      const date = publishDate?.value ? new Date(publishDate.value) : null;
+      if (!date || Number.isNaN(date.getTime()) || date.getTime() < Date.now() + 60_000) return setStatus(publishStatus, 'Выберите дату и время в будущем.', true);
+      publishAt = Math.floor(date.getTime() / 1000);
+      confirmation = `Поставить пост в очередь ВК на ${date.toLocaleString('ru-RU')}?`;
+    }
+    if (!window.confirm(confirmation)) return;
 
-    publishButton.disabled = true;
-    publishButton.textContent = 'Публикуем…';
-    setStatus(publishStatus, 'Отправляем одобренный текст во ВКонтакте…');
+    busy = true; updatePublishButton();
+    setStatus(publishStatus, mediaItems.length ? 'Сначала загружаем выбранные вложения…' : 'Отправляем одобренный текст во ВКонтакте…');
     try {
+      const attachments = await uploadMedia(password);
+      setStatus(publishStatus, publishAt ? 'Ставим пост в очередь ВКонтакте…' : 'Публикуем пост во ВКонтакте…');
       const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${password}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message, approved: true, requestId: publishRequestId }),
+        headers: { Authorization: `Bearer ${password}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
       });
-      const data = await response.json() as { published?: boolean; url?: string; error?: string };
-      if (!response.ok || !data.published || !data.url) throw new Error(data.error || 'Не удалось опубликовать пост.');
-
-      setStatus(publishStatus, 'Пост опубликован во ВКонтакте.');
+      const data = await response.json() as { published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string };
+      if (!response.ok || !data.published || !data.url) throw new Error(data.error || 'Не удалось отправить пост.');
+      const scheduledDate = data.publishAt ? new Date(data.publishAt * 1000) : null;
+      setStatus(publishStatus, data.scheduled && scheduledDate ? `Пост поставлен в очередь на ${scheduledDate.toLocaleString('ru-RU')}.` : 'Пост опубликован во ВКонтакте.');
       if (publishedLink) {
         const link = document.createElement('a');
-        link.href = data.url;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = 'Открыть опубликованный пост в ВК';
+        link.href = data.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        link.textContent = data.scheduled ? 'Открыть запись в ВК' : 'Открыть опубликованный пост в ВК';
         publishedLink.replaceChildren(link);
       }
       if (approval) approval.checked = false;
     } catch (error) {
       setStatus(publishStatus, error instanceof Error ? error.message : 'Произошла ошибка публикации.', true);
-    } finally {
-      publishButton.textContent = 'Опубликовать в ВК';
-      updatePublishButton();
-    }
+    } finally { busy = false; updatePublishButton(); }
   });
+
+  updateScheduleMinimum();
 </script>
 
 <style>
   .owner-studio{min-height:70vh;background:var(--paper-2)}
-  .studio-wrap{max-width:980px}
-  .studio-heading{max-width:760px;margin-bottom:1.5rem}
-  .studio-heading>p:not(.eyebrow){color:var(--muted)}
+  .studio-wrap{max-width:980px}.studio-heading{max-width:760px;margin-bottom:1.5rem}.studio-heading>p:not(.eyebrow){color:var(--muted)}
   .privacy-note{margin-bottom:1.5rem;padding:1rem 1.2rem;border-left:4px solid var(--honey);background:rgba(255,255,255,.65)}
   .studio-card{margin-bottom:1.5rem;padding:clamp(1.2rem,4vw,2.2rem);border:1px solid var(--line);border-radius:var(--radius);background:var(--white);box-shadow:var(--shadow)}
   .studio-step+.studio-step{margin-top:2rem;padding-top:2rem;border-top:1px solid var(--line)}
   .step-number{margin-bottom:.4rem;color:var(--apple);font-size:.75rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
-  .studio-step h2{margin-bottom:1rem;font-size:clamp(1.4rem,3vw,2rem)}
-  .studio-step label{display:block;margin:.8rem 0 .45rem;color:var(--forest);font-weight:700}
-  .studio-step input[type="text"],.studio-step input[type="password"],.studio-step textarea{width:100%;padding:.8rem 1rem;border:1px solid var(--line);border-radius:14px;color:var(--ink);background:var(--paper);font:inherit;line-height:1.55}
-  .studio-step textarea{resize:vertical}
-  .studio-step input:focus,.studio-step textarea:focus{outline:3px solid rgba(216,168,78,.4);border-color:var(--forest)}
-  .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
-  .field-help,.editor-meta,.draft-source{color:var(--muted);font-size:.82rem}
-  .studio-step .button{margin-top:1rem}
-  .studio-status{min-height:1.5em;margin:.8rem 0 0;color:var(--forest)}
-  .studio-status[data-error="true"]{color:var(--apple)}
-  .editor-meta{display:flex;justify-content:space-between;gap:1rem;margin-top:.5rem}
-  .button-row{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1rem}
-  .secondary-button{padding:.65rem 1rem;border:1px solid var(--forest);border-radius:999px;color:var(--forest);background:transparent;cursor:pointer;font-weight:700}
-  .approval-row{display:flex!important;align-items:flex-start;gap:.75rem;padding:1rem;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
-  .approval-row input{width:1.2rem;height:1.2rem;margin-top:.2rem;flex:0 0 auto}
-  .publish-button:disabled{cursor:not-allowed;opacity:.5;transform:none}
-  [hidden]{display:none!important}
-  @media(max-width:720px){.field-grid{grid-template-columns:1fr}.editor-meta{flex-direction:column}.studio-step .button{width:100%}}
+  .studio-step h2{margin-bottom:1rem;font-size:clamp(1.4rem,3vw,2rem)}.studio-step label{display:block;margin:.8rem 0 .45rem;color:var(--forest);font-weight:700}
+  .studio-step input[type="text"],.studio-step input[type="password"],.studio-step input[type="datetime-local"],.studio-step textarea{width:100%;padding:.8rem 1rem;border:1px solid var(--line);border-radius:14px;color:var(--ink);background:var(--paper);font:inherit;line-height:1.55}
+  .studio-step textarea{resize:vertical}.studio-step input:focus,.studio-step textarea:focus{outline:3px solid rgba(216,168,78,.4);border-color:var(--forest)}
+  .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}.field-help,.editor-meta,.draft-source{color:var(--muted);font-size:.82rem}.studio-step .button{margin-top:1rem}
+  .studio-status{min-height:1.5em;margin:.8rem 0 0;color:var(--forest)}.studio-status[data-error="true"]{color:var(--apple)}.editor-meta{display:flex;justify-content:space-between;gap:1rem;margin-top:.5rem}
+  .button-row{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1rem}.secondary-button,.file-picker,.remove-media{padding:.65rem 1rem;border:1px solid var(--forest);border-radius:999px;color:var(--forest);background:transparent;cursor:pointer;font-weight:700}
+  .file-picker{display:inline-block!important;margin-top:.5rem!important}#vk-media{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  .media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-top:1rem}.media-card{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+  .media-card img,.media-card video{display:block;width:100%;height:170px;object-fit:cover;background:#111}.media-info{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;padding:.75rem}.media-info strong{max-width:100%;overflow-wrap:anywhere}.media-info span{color:var(--muted);font-size:.82rem}.remove-media{padding:.35rem .7rem;margin-top:.25rem}
+  .publish-mode{display:flex;flex-wrap:wrap;gap:.8rem 1.4rem;margin:1rem 0;padding:1rem;border:1px solid var(--line);border-radius:14px}.publish-mode legend{padding:0 .4rem;color:var(--forest);font-weight:800}.publish-mode label{display:flex!important;align-items:center;gap:.45rem;margin:0!important}
+  .approval-row{display:flex!important;align-items:flex-start;gap:.75rem;padding:1rem;border:1px solid var(--line);border-radius:14px;background:var(--paper)}.approval-row input{width:1.2rem;height:1.2rem;margin-top:.2rem;flex:0 0 auto}.publish-button:disabled{cursor:not-allowed;opacity:.5;transform:none}
+  [hidden]{display:none!important}@media(max-width:720px){.field-grid{grid-template-columns:1fr}.editor-meta{flex-direction:column}.studio-step .button{width:100%}.media-grid{grid-template-columns:1fr}}
 </style>

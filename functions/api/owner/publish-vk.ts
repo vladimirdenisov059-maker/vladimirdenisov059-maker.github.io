@@ -3,32 +3,32 @@ import {
   ownerCorsHeaders,
   ownerJson,
   readJsonBody,
-  type OwnerEnv,
 } from '../../_shared/owner-auth.ts';
-
-interface Env extends OwnerEnv {
-  VK_ACCESS_TOKEN?: string;
-  VK_OWNER_ID?: string;
-  VK_API_VERSION?: string;
-}
+import {
+  callVk,
+  configuredPersonalOwnerId,
+  type VkEnv,
+  vkErrorCode,
+} from '../../_shared/vk.ts';
 
 interface PagesContext {
   request: Request;
-  env: Env;
+  env: VkEnv;
 }
 
 interface PublishRequest {
   message?: unknown;
   approved?: unknown;
   requestId?: unknown;
+  attachments?: unknown;
+  publishAt?: unknown;
 }
 
-interface VkResponse {
-  response?: { post_id?: number };
-  error?: { error_code?: number; error_msg?: string };
-}
+interface VkWallPostResponse { post_id?: number }
 
 const requestIdPattern = /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
+const attachmentPattern = /^(photo|video)\d+_\d+(?:_[\w-]+)?$/;
+const maximumScheduleSeconds = 365 * 24 * 60 * 60;
 
 export const onRequest = async ({ request, env }: PagesContext): Promise<Response> => {
   const cors = ownerCorsHeaders(request, env);
@@ -46,57 +46,60 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
         : 'Неверный пароль владельца.',
     }, auth.status);
   }
-  if (!env.VK_ACCESS_TOKEN || !env.VK_OWNER_ID) {
-    return respond({ error: 'Публикация в ВК ещё не подключена. Черновик можно сохранить и скопировать.' }, 503);
+  const ownerId = configuredPersonalOwnerId(env);
+  if (!ownerId) {
+    return respond({ error: 'Публикация на личной странице ВК ещё не подключена. Черновик можно сохранить и скопировать.' }, 503);
   }
 
-  const body = await readJsonBody<PublishRequest>(request, 24576);
+  const body = await readJsonBody<PublishRequest>(request, 32768);
   if (!body) return respond({ error: 'Не удалось прочитать запрос.' }, 400);
   const message = typeof body.message === 'string' ? body.message.trim() : '';
   const requestId = typeof body.requestId === 'string' ? body.requestId : '';
+  const attachments = Array.isArray(body.attachments)
+    ? body.attachments.filter((value): value is string => typeof value === 'string')
+    : [];
+  const publishAt = body.publishAt === null || body.publishAt === undefined || body.publishAt === ''
+    ? null
+    : Number(body.publishAt);
+
   if (body.approved !== true) return respond({ error: 'Публикация не подтверждена владельцем.' }, 409);
   if (message.length < 100 || message.length > 15000) {
     return respond({ error: 'Текст публикации должен содержать от 100 до 15 000 знаков.' }, 400);
   }
   if (!requestIdPattern.test(requestId)) return respond({ error: 'Обновите страницу и повторите попытку.' }, 400);
-  if (!/^-?\d+$/.test(env.VK_OWNER_ID)) return respond({ error: 'Идентификатор страницы ВК настроен неверно.' }, 503);
+  if (attachments.length > 10 || attachments.some((value) => !attachmentPattern.test(value))) {
+    return respond({ error: 'Список фотографий или видео сформирован неверно.' }, 400);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (publishAt !== null && (!Number.isSafeInteger(publishAt) || publishAt < now + 60 || publishAt > now + maximumScheduleSeconds)) {
+    return respond({ error: 'Дата отложенной публикации должна быть в будущем, но не позднее чем через год.' }, 400);
+  }
 
   const params = new URLSearchParams({
-    owner_id: env.VK_OWNER_ID,
+    owner_id: String(ownerId),
     message,
     guid: requestId,
-    access_token: env.VK_ACCESS_TOKEN,
-    v: env.VK_API_VERSION || '5.199',
   });
+  if (attachments.length) params.set('attachments', attachments.join(','));
+  if (publishAt !== null) params.set('publish_date', String(publishAt));
 
-  let upstream: Response;
   try {
-    upstream = await fetch('https://api.vk.com/method/wall.post', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params,
-    });
-  } catch {
-    return respond({ error: 'ВКонтакте временно недоступен. Текст не опубликован.' }, 502);
-  }
-
-  let result: VkResponse;
-  try {
-    result = await upstream.json() as VkResponse;
-  } catch {
-    return respond({ error: 'ВКонтакте вернул некорректный ответ. Проверьте стену перед повтором.' }, 502);
-  }
-  const postId = result.response?.post_id;
-  if (!upstream.ok || !postId) {
-    console.error('VK wall.post failed', result.error?.error_code ?? upstream.status);
+    const result = await callVk<VkWallPostResponse>(env, 'wall.post', params);
+    const postId = result.post_id;
+    if (!postId) throw new Error('VK_WALL_POST_FAILED');
     return respond({
-      error: `ВКонтакте не опубликовал запись${result.error?.error_code ? ` (код ${result.error.error_code})` : ''}.`,
+      published: true,
+      scheduled: publishAt !== null,
+      publishAt,
+      postId,
+      url: `https://vk.com/wall${ownerId}_${postId}`,
+    });
+  } catch (error) {
+    const code = vkErrorCode(error);
+    console.error('VK wall.post failed', code ?? error);
+    return respond({
+      error: `ВКонтакте не принял запись${code ? ` (код ${code})` : ''}. Проверьте стену перед повтором.`,
     }, 502);
   }
-
-  return respond({
-    published: true,
-    postId,
-    url: `https://vk.com/wall${env.VK_OWNER_ID}_${postId}`,
-  });
 };
