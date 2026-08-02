@@ -148,6 +148,7 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
   const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
   let vkAccessToken = '';
+  let vkOwnerId: number | null = null;
   let vkBridgeReady = false;
   let busy = false;
   let publishRequestId = crypto.randomUUID();
@@ -226,20 +227,39 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     return headers;
   };
 
+  const callVkThroughBridge = async <T,>(method: string, parameters: Record<string, string | number> = {}) => {
+    if (!vkAccessToken || !vkBridgeReady) throw new Error('Сначала подключите свою страницу ВК.');
+    const result = await bridge.send('VKWebAppCallAPIMethod', {
+      method,
+      params: { ...parameters, access_token: vkAccessToken, v: '5.199' },
+    });
+    return result.response as T;
+  };
+
   const checkVkConnection = async (password: string) => {
-    if (!form?.dataset.statusEndpoint) return;
     try {
-      const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
-      const data = await response.json() as { configured?: boolean; name?: string; url?: string; error?: string };
-      vkConfigured = response.ok && data.configured === true;
-      if (vkState) {
-        vkState.textContent = vkConfigured
+      if (vkAccessToken && vkBridgeReady) {
+        const users = await callVkThroughBridge<Array<{ id: number; first_name?: string; last_name?: string }>>('users.get', { fields: 'screen_name' });
+        const user = users[0];
+        if (!user?.id) throw new Error('ВКонтакте не вернул данные страницы.');
+        vkOwnerId = user.id;
+        vkConfigured = true;
+        const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+        if (vkState) vkState.textContent = `Подключена личная страница ВК: ${name || `ID ${user.id}`}.`;
+      } else {
+        if (!form?.dataset.statusEndpoint) return;
+        const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
+        const data = await response.json() as { configured?: boolean; ownerId?: number; name?: string; error?: string };
+        vkConfigured = response.ok && data.configured === true;
+        vkOwnerId = data.ownerId || null;
+        if (vkState) vkState.textContent = vkConfigured
           ? `Подключена личная страница ВК: ${data.name || 'владелец'}.`
           : (data.error || 'ВКонтакте пока не подключён.');
       }
     } catch {
       vkConfigured = false;
-      if (vkState) vkState.textContent = 'Не удалось проверить подключение ВКонтакте.';
+      vkOwnerId = null;
+      if (vkState) vkState.textContent = 'ВКонтакте не подтвердил доступ. Нажмите «Подключить мою страницу ВК» ещё раз.';
     }
     updatePublishButton();
   };
@@ -365,6 +385,41 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     URL.revokeObjectURL(url);
   });
 
+  const uploadMediaThroughBridge = async (item: MediaItem) => {
+    if (!vkOwnerId) throw new Error('Сначала подключите личную страницу ВК.');
+    const kind = item.file.type.startsWith('image/') ? 'photo' : 'video';
+    if (kind === 'photo') {
+      const server = await callVkThroughBridge<{ upload_url?: string }>('photos.getWallUploadServer');
+      if (!server.upload_url) throw new Error('ВКонтакте не подготовил загрузку фотографии.');
+      const body = new FormData();
+      body.append('photo', item.file, item.file.name);
+      const uploaded = await fetch(server.upload_url, { method: 'POST', body });
+      const uploadData = await uploaded.json() as { server?: number; photo?: string; hash?: string };
+      if (!uploaded.ok || uploadData.server === undefined || !uploadData.photo || !uploadData.hash) throw new Error('ВКонтакте не принял фотографию.');
+      const saved = await callVkThroughBridge<Array<{ id?: number; owner_id?: number; access_key?: string }>>('photos.saveWallPhoto', {
+        user_id: vkOwnerId,
+        server: uploadData.server,
+        photo: uploadData.photo,
+        hash: uploadData.hash,
+      });
+      const photo = saved[0];
+      if (!photo?.id || !photo.owner_id) throw new Error('ВКонтакте не сохранил фотографию.');
+      return `photo${photo.owner_id}_${photo.id}${photo.access_key ? `_${photo.access_key}` : ''}`;
+    }
+
+    const video = await callVkThroughBridge<{ upload_url?: string; owner_id?: number; video_id?: number; access_key?: string }>('video.save', {
+      name: item.file.name.replace(/\.[^.]+$/, '').slice(0, 128) || 'Видео из сада Владимира Денисова',
+      wallpost: 0,
+    });
+    if (!video.upload_url || !video.owner_id || !video.video_id) throw new Error('ВКонтакте не подготовил загрузку видео.');
+    const body = new FormData();
+    body.append('video_file', item.file, item.file.name);
+    const uploaded = await fetch(video.upload_url, { method: 'POST', body });
+    if (!uploaded.ok) throw new Error('ВКонтакте не принял видео.');
+    await uploaded.text();
+    return `video${video.owner_id}_${video.video_id}${video.access_key ? `_${video.access_key}` : ''}`;
+  };
+
   const uploadMedia = async (password: string) => {
     const attachments: string[] = [];
     for (let index = 0; index < mediaItems.length; index += 1) {
@@ -373,22 +428,28 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
       if (cached) { attachments.push(cached); continue; }
       const kind = item.file.type.startsWith('image/') ? 'photo' : 'video';
       setStatus(mediaStatus, `Загружаем во ВКонтакте файл ${index + 1} из ${mediaItems.length}: ${item.file.name}`);
-      const body = new FormData();
-      body.append(kind === 'photo' ? 'photo' : 'video_file', item.file, item.file.name);
-      const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
-        method: 'POST',
-        headers: {
-          ...ownerHeaders(password),
-          'X-File-Size': String(item.file.size),
-          'X-File-Type': item.file.type,
-          'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
-        },
-        body,
-      });
-      const data = await response.json() as { uploaded?: boolean; attachment?: string; error?: string };
-      if (!response.ok || !data.uploaded || !data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
-      uploadedAttachments.set(item.id, data.attachment);
-      attachments.push(data.attachment);
+      let attachment: string;
+      if (vkAccessToken && vkBridgeReady) {
+        attachment = await uploadMediaThroughBridge(item);
+      } else {
+        const body = new FormData();
+        body.append(kind === 'photo' ? 'photo' : 'video_file', item.file, item.file.name);
+        const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
+          method: 'POST',
+          headers: {
+            ...ownerHeaders(password),
+            'X-File-Size': String(item.file.size),
+            'X-File-Type': item.file.type,
+            'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
+          },
+          body,
+        });
+        const data = await response.json() as { uploaded?: boolean; attachment?: string; error?: string };
+        if (!response.ok || !data.uploaded || !data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
+        attachment = data.attachment;
+      }
+      uploadedAttachments.set(item.id, attachment);
+      attachments.push(attachment);
     }
     if (mediaItems.length) setStatus(mediaStatus, 'Все выбранные файлы загружены во ВКонтакте.');
     return attachments;
@@ -413,13 +474,33 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     try {
       const attachments = await uploadMedia(password);
       setStatus(publishStatus, publishAt ? 'Ставим пост в очередь ВКонтакте…' : 'Публикуем пост во ВКонтакте…');
-      const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
-        method: 'POST',
-        headers: ownerHeaders(password, true),
-        body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
-      });
-      const data = await response.json() as { published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string };
-      if (!response.ok || !data.published || !data.url) throw new Error(data.error || 'Не удалось отправить пост.');
+      let data: { published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string };
+      if (vkAccessToken && vkBridgeReady && vkOwnerId) {
+        const parameters: Record<string, string | number> = {
+          owner_id: vkOwnerId,
+          message,
+          guid: publishRequestId,
+        };
+        if (attachments.length) parameters.attachments = attachments.join(',');
+        if (publishAt) parameters.publish_date = publishAt;
+        const result = await callVkThroughBridge<{ post_id?: number }>('wall.post', parameters);
+        if (!result.post_id) throw new Error('ВКонтакте не вернул номер записи.');
+        data = {
+          published: true,
+          scheduled: publishAt !== null,
+          publishAt: publishAt ?? undefined,
+          url: `https://vk.com/wall${vkOwnerId}_${result.post_id}`,
+        };
+      } else {
+        const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
+          method: 'POST',
+          headers: ownerHeaders(password, true),
+          body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
+        });
+        data = await response.json() as typeof data;
+        if (!response.ok) throw new Error(data.error || 'Не удалось отправить пост.');
+      }
+      if (!data.published || !data.url) throw new Error(data.error || 'Не удалось отправить пост.');
       const scheduledDate = data.publishAt ? new Date(data.publishAt * 1000) : null;
       setStatus(publishStatus, data.scheduled && scheduledDate ? `Пост поставлен в очередь на ${scheduledDate.toLocaleString('ru-RU')}.` : 'Пост опубликован во ВКонтакте.');
       if (publishedLink) {
