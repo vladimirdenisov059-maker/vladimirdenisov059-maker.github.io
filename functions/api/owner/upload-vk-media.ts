@@ -60,6 +60,7 @@ const safeUploadUrl = (value: string | undefined) => {
       || hostname.endsWith('.vkvideo.ru')
       || hostname === 'vkontakte.ru'
       || hostname.endsWith('.vkontakte.ru')
+      || hostname === 'ovu.mycdn.me'
       || hostname.endsWith('.vk-cdn.net');
     return url.protocol === 'https:' && isVkUploadHost ? url : null;
   } catch {
