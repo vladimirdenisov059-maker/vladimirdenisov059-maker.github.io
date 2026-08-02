@@ -4,8 +4,7 @@ import {
   ownerJson,
 } from '../../_shared/owner-auth.ts';
 import {
-  callVk,
-  configuredPersonalOwnerId,
+  resolvePersonalVkUser,
   type VkEnv,
   vkErrorCode,
 } from '../../_shared/vk.ts';
@@ -13,13 +12,6 @@ import {
 interface PagesContext {
   request: Request;
   env: VkEnv;
-}
-
-interface VkUser {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  screen_name?: string;
 }
 
 export const onRequest = async ({ request, env }: PagesContext): Promise<Response> => {
@@ -35,23 +27,8 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     return respond({ error: auth.status === 503 ? 'Закрытый редактор ещё не настроен.' : 'Неверный пароль владельца.' }, auth.status);
   }
 
-  const ownerId = configuredPersonalOwnerId(env);
-  if (!ownerId) {
-    return respond({
-      configured: false,
-      error: 'Личная страница ВКонтакте ещё не подключена.',
-    }, 503);
-  }
-
   try {
-    const users = await callVk<VkUser[]>(env, 'users.get', new URLSearchParams({
-      user_ids: String(ownerId),
-      fields: 'screen_name',
-    }));
-    const user = users[0];
-    if (!user || user.id !== ownerId) {
-      return respond({ configured: false, error: 'Токен ВК не соответствует выбранной личной странице.' }, 409);
-    }
+    const { ownerId, user } = await resolvePersonalVkUser(request, env);
     const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
     return respond({
       configured: true,

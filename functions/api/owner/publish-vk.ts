@@ -6,7 +6,7 @@ import {
 } from '../../_shared/owner-auth.ts';
 import {
   callVk,
-  configuredPersonalOwnerId,
+  resolvePersonalVkUser,
   type VkEnv,
   vkErrorCode,
 } from '../../_shared/vk.ts';
@@ -46,10 +46,14 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
         : 'Неверный пароль владельца.',
     }, auth.status);
   }
-  const ownerId = configuredPersonalOwnerId(env);
-  if (!ownerId) {
-    return respond({ error: 'Публикация на личной странице ВК ещё не подключена. Черновик можно сохранить и скопировать.' }, 503);
+  let vkIdentity;
+  try {
+    vkIdentity = await resolvePersonalVkUser(request, env);
+  } catch (error) {
+    const code = vkErrorCode(error);
+    return respond({ error: `Личная страница ВК не подключена${code ? ` (код ${code})` : ''}. Нажмите «Подключить мою страницу ВК».` }, 503);
   }
+  const { ownerId, accessToken } = vkIdentity;
 
   const body = await readJsonBody<PublishRequest>(request, 32768);
   if (!body) return respond({ error: 'Не удалось прочитать запрос.' }, 400);
@@ -85,7 +89,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   if (publishAt !== null) params.set('publish_date', String(publishAt));
 
   try {
-    const result = await callVk<VkWallPostResponse>(env, 'wall.post', params);
+    const result = await callVk<VkWallPostResponse>(env, 'wall.post', params, accessToken);
     const postId = result.post_id;
     if (!postId) throw new Error('VK_WALL_POST_FAILED');
     return respond({

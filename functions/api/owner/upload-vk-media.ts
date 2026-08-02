@@ -5,7 +5,7 @@ import {
 } from '../../_shared/owner-auth.ts';
 import {
   callVk,
-  configuredPersonalOwnerId,
+  resolvePersonalVkUser,
   type VkEnv,
   vkErrorCode,
 } from '../../_shared/vk.ts';
@@ -74,8 +74,14 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   if (!auth.ok) {
     return respond({ error: auth.status === 503 ? 'Закрытый редактор ещё не настроен.' : 'Неверный пароль владельца.' }, auth.status);
   }
-  const ownerId = configuredPersonalOwnerId(env);
-  if (!ownerId) return respond({ error: 'Личная страница ВКонтакте ещё не подключена.' }, 503);
+  let vkIdentity;
+  try {
+    vkIdentity = await resolvePersonalVkUser(request, env);
+  } catch (error) {
+    const code = vkErrorCode(error);
+    return respond({ error: `Не удалось подключить личную страницу ВК${code ? ` (код ${code})` : ''}.` }, 503);
+  }
+  const { ownerId, accessToken } = vkIdentity;
 
   const requestUrl = new URL(request.url);
   const kind = requestUrl.searchParams.get('kind');
@@ -92,7 +98,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
 
   try {
     if (kind === 'photo') {
-      const server = await callVk<UploadServer>(env, 'photos.getWallUploadServer', new URLSearchParams());
+      const server = await callVk<UploadServer>(env, 'photos.getWallUploadServer', new URLSearchParams(), accessToken);
       const uploadUrl = safeUploadUrl(server.upload_url);
       if (!uploadUrl) throw new Error('INVALID_UPLOAD_URL');
       const uploaded = await uploadBody(request, uploadUrl);
@@ -105,7 +111,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
         photo: uploadResult.photo,
         server: String(uploadResult.server),
         hash: uploadResult.hash,
-      }));
+      }), accessToken);
       const photo = saved[0];
       if (!photo?.id || !photo.owner_id || photo.owner_id !== ownerId) throw new Error('PHOTO_SAVE_FAILED');
       return respond({
@@ -119,7 +125,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     const video = await callVk<SavedVideo>(env, 'video.save', new URLSearchParams({
       name: requestedTitle || 'Видео из сада Владимира Денисова',
       wallpost: '0',
-    }));
+    }), accessToken);
     const uploadUrl = safeUploadUrl(video.upload_url);
     if (!uploadUrl || !video.video_id || !video.owner_id || video.owner_id !== ownerId) throw new Error('VIDEO_SAVE_FAILED');
     const uploaded = await uploadBody(request, uploadUrl);

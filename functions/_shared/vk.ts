@@ -24,9 +24,20 @@ export const configuredPersonalOwnerId = (env: VkEnv): number | null => {
   return Number.isSafeInteger(ownerId) && ownerId > 0 ? ownerId : null;
 };
 
-export const callVk = async <T>(env: VkEnv, method: string, parameters: URLSearchParams) => {
-  if (!env.VK_ACCESS_TOKEN) throw new Error('VK_NOT_CONFIGURED');
-  parameters.set('access_token', env.VK_ACCESS_TOKEN);
+export const requestVkAccessToken = (request: Request, env: VkEnv) => {
+  const supplied = (request.headers.get('X-VK-Access-Token') ?? '').trim();
+  if (supplied && supplied.length <= 4096 && !/[\r\n]/.test(supplied)) return supplied;
+  return env.VK_ACCESS_TOKEN?.trim() || null;
+};
+
+export const callVk = async <T>(
+  env: VkEnv,
+  method: string,
+  parameters: URLSearchParams,
+  accessToken = env.VK_ACCESS_TOKEN,
+) => {
+  if (!accessToken) throw new Error('VK_NOT_CONFIGURED');
+  parameters.set('access_token', accessToken);
   parameters.set('v', vkApiVersion(env));
 
   const upstream = await fetch(`https://api.vk.com/method/${method}`, {
@@ -41,6 +52,26 @@ export const callVk = async <T>(env: VkEnv, method: string, parameters: URLSearc
     throw error;
   }
   return result.response;
+};
+
+interface VkCurrentUser {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  screen_name?: string;
+}
+
+export const resolvePersonalVkUser = async (request: Request, env: VkEnv) => {
+  const accessToken = requestVkAccessToken(request, env);
+  if (!accessToken) throw new Error('VK_NOT_CONFIGURED');
+  const configuredOwnerId = configuredPersonalOwnerId(env);
+  const parameters = new URLSearchParams({ fields: 'screen_name' });
+  if (configuredOwnerId) parameters.set('user_ids', String(configuredOwnerId));
+  const users = await callVk<VkCurrentUser[]>(env, 'users.get', parameters, accessToken);
+  const user = users[0];
+  if (!user || !Number.isSafeInteger(user.id) || user.id <= 0) throw new Error('VK_USER_NOT_FOUND');
+  if (configuredOwnerId && user.id !== configuredOwnerId) throw new Error('VK_OWNER_MISMATCH');
+  return { accessToken, ownerId: user.id, user };
 };
 
 export const vkErrorCode = (error: unknown) => {

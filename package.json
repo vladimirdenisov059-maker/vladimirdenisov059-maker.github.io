@@ -17,6 +17,7 @@
   "dependencies": {
     "@astrojs/rss": "latest",
     "@astrojs/sitemap": "latest",
+    "@vkontakte/vk-bridge": "^3.0.2",
     "astro": "latest"
   },
   "devDependencies": {

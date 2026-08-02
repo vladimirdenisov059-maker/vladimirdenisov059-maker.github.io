@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { onRequest as generateVkDraft } from '../functions/api/owner/generate-vk.ts';
 import { onRequest as publishVk } from '../functions/api/owner/publish-vk.ts';
 import { onRequest as vkStatus } from '../functions/api/owner/vk-status.ts';
@@ -51,6 +52,7 @@ const preflight = await generateVkDraft({
 assert.equal(preflight.status, 204);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /Authorization/);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-File-Size/);
+assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-VK-Access-Token/);
 
 const missingPasswordSetup = await generateVkDraft({
   request: makeRequest('/api/owner/generate-vk', { plant: 'киви Стратона' }),
@@ -124,6 +126,15 @@ assert.equal(statusResponse.status, 200);
 assert.equal(statusBody.configured, true);
 assert.equal(statusBody.name, 'Владимир Денисов');
 
+const temporaryTokenRequest = makeRequest('/api/owner/vk-status', {});
+temporaryTokenRequest.headers.set('X-VK-Access-Token', 'temporary-vk-user-token');
+const temporaryStatusResponse = await vkStatus({
+  request: temporaryTokenRequest,
+  env: { ADMIN_PASSWORD: password },
+});
+assert.equal(temporaryStatusResponse.status, 200);
+assert.equal((await temporaryStatusResponse.json()).ownerId, Number(ownerId));
+
 const photo = new File([new Uint8Array([1, 2, 3])], 'garden.jpg', { type: 'image/jpeg' });
 const photoResponse = await uploadVkMedia({ request: makeMediaRequest('photo', photo), env });
 const photoBody = await photoResponse.json();
@@ -177,4 +188,9 @@ assert.equal(capturedWallParams.get('publish_date'), String(publishAt));
 assert.equal(capturedWallParams.get('guid'), '123e4567-e89b-42d3-a456-426614174000');
 assert.equal(capturedWallParams.get('access_token'), 'vk-test-token');
 
-console.log('Owner studio checks passed: authentication, personal VK check, media uploads and scheduling');
+const studioSource = readFileSync(new URL('../src/pages/studio-vd.astro', import.meta.url), 'utf8');
+assert.match(studioSource, /VKWebAppInit/);
+assert.match(studioSource, /VKWebAppGetAuthToken/);
+assert.match(studioSource, /X-VK-Access-Token/);
+
+console.log('Owner studio checks passed: authentication, VK Mini App connection, media uploads and scheduling');

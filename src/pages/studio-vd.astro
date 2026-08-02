@@ -29,6 +29,11 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
           <label for="owner-password">Введите пароль закрытого редактора</label>
           <input id="owner-password" name="password" type="password" autocomplete="current-password" minlength="12" required />
           <p class="field-help">Пароль проверяется в Cloudflare и не записывается на сайт.</p>
+          <div class="vk-connect-panel">
+            <p data-vk-state>Запускаем приложение ВКонтакте…</p>
+            <button class="secondary-button" type="button" data-vk-connect disabled>Подключить мою страницу ВК</button>
+            <p class="field-help">ВКонтакте сам покажет запрашиваемые разрешения. Ключ доступа не сохраняется на сайте.</p>
+          </div>
         </section>
 
         <section class="studio-step" aria-labelledby="step-one">
@@ -81,7 +86,7 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
       <section class="studio-card studio-step publish-step" data-publish-section hidden aria-labelledby="step-four">
         <div class="step-number">Шаг 4</div>
         <h2 id="step-four">Выбрать время, одобрить и отправить</h2>
-        <p data-vk-state>Проверяем подключение ВКонтакте…</p>
+        <p>Перед отправкой убедитесь, что выше указана именно ваша личная страница ВКонтакте.</p>
 
         <fieldset class="publish-mode">
           <legend>Когда опубликовать</legend>
@@ -107,6 +112,9 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
 </BaseLayout>
 
 <script>
+  import bridge from '@vkontakte/vk-bridge';
+
+  const VK_APP_ID = 54704308;
   const form = document.querySelector<HTMLFormElement>('[data-owner-form]');
   const passwordInput = document.querySelector<HTMLInputElement>('#owner-password');
   const plantInput = document.querySelector<HTMLInputElement>('#owner-plant');
@@ -132,12 +140,15 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
   const publishButton = document.querySelector<HTMLButtonElement>('[data-publish-button]');
   const publishStatus = document.querySelector<HTMLElement>('[data-publish-status]');
   const vkState = document.querySelector<HTMLElement>('[data-vk-state]');
+  const vkConnectButton = document.querySelector<HTMLButtonElement>('[data-vk-connect]');
   const publishedLink = document.querySelector<HTMLElement>('[data-published-link]');
 
   type MediaItem = { id: string; file: File; previewUrl: string };
   let mediaItems: MediaItem[] = [];
   const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
+  let vkAccessToken = '';
+  let vkBridgeReady = false;
   let busy = false;
   let publishRequestId = crypto.randomUUID();
 
@@ -208,10 +219,17 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     setStatus(mediaStatus, mediaItems.length ? `Выбрано файлов: ${mediaItems.length}. Они загрузятся во ВКонтакте только после вашего подтверждения.` : 'Вложения не выбраны. Можно опубликовать только текст.');
   };
 
+  const ownerHeaders = (password: string, json = false) => {
+    const headers: Record<string, string> = { Authorization: `Bearer ${password}` };
+    if (json) headers['Content-Type'] = 'application/json';
+    if (vkAccessToken) headers['X-VK-Access-Token'] = vkAccessToken;
+    return headers;
+  };
+
   const checkVkConnection = async (password: string) => {
     if (!form?.dataset.statusEndpoint) return;
     try {
-      const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: { Authorization: `Bearer ${password}` } });
+      const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
       const data = await response.json() as { configured?: boolean; name?: string; url?: string; error?: string };
       vkConfigured = response.ok && data.configured === true;
       if (vkState) {
@@ -225,6 +243,40 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     }
     updatePublishButton();
   };
+
+  const initializeVkMiniApp = async () => {
+    try {
+      await bridge.send('VKWebAppInit');
+      vkBridgeReady = true;
+      if (vkConnectButton) vkConnectButton.disabled = false;
+      if (vkState) vkState.textContent = 'Приложение ВК запущено. Нажмите кнопку ниже, чтобы подключить свою страницу.';
+    } catch {
+      if (vkState) vkState.textContent = 'Для подключения страницы откройте редактор через приложение ВКонтакте.';
+    }
+  };
+
+  vkConnectButton?.addEventListener('click', async () => {
+    const password = passwordInput?.value ?? '';
+    if (password.length < 12) return setStatus(vkState, 'Сначала введите пароль владельца.', true);
+    if (!vkBridgeReady) return setStatus(vkState, 'Откройте редактор через приложение ВКонтакте и повторите.', true);
+    vkConnectButton.disabled = true;
+    setStatus(vkState, 'ВКонтакте запрашивает разрешения на стену, фото и видео…');
+    try {
+      const result = await bridge.send('VKWebAppGetAuthToken', {
+        app_id: VK_APP_ID,
+        scope: 'wall,photos,video',
+      });
+      vkAccessToken = result.access_token;
+      await checkVkConnection(password);
+    } catch {
+      vkAccessToken = '';
+      vkConfigured = false;
+      setStatus(vkState, 'Подключение не завершено. Разрешите доступ в окне ВКонтакте и повторите.', true);
+      updatePublishButton();
+    } finally {
+      vkConnectButton.disabled = false;
+    }
+  });
 
   draft?.addEventListener('input', () => { updateCounter(); resetApproval(); });
   approval?.addEventListener('change', updatePublishButton);
@@ -269,14 +321,14 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     try {
       const response = await fetch(form.dataset.draftEndpoint || '/api/owner/generate-vk', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${password}`, 'Content-Type': 'application/json' },
+        headers: ownerHeaders(password, true),
         body: JSON.stringify({ plant, focus: focusInput?.value ?? '', notes: notesInput?.value ?? '' }),
       });
       const data = await response.json() as { post?: string; error?: string; matchedPlant?: string | null; vkConfigured?: boolean };
       if (!response.ok || !data.post) throw new Error(data.error || 'Не удалось создать черновик.');
       if (draft) draft.value = data.post;
       if (draftSource) draftSource.textContent = data.matchedPlant ? `Использован опубликованный опыт: ${data.matchedPlant}` : 'Черновик создан по добавленным вами наблюдениям.';
-      vkConfigured = data.vkConfigured === true;
+      if (!vkAccessToken) vkConfigured = data.vkConfigured === true;
       if (approval) approval.checked = false;
       publishRequestId = crypto.randomUUID();
       updateCounter(); updateScheduleMinimum(); updatePublishButton(); renderMedia();
@@ -284,8 +336,8 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
       if (mediaSection) mediaSection.hidden = false;
       if (publishSection) publishSection.hidden = false;
       setStatus(status, 'Черновик готов. Теперь внимательно проверьте и исправьте его.');
-      if (vkConfigured) await checkVkConnection(password);
-      else if (vkState) vkState.textContent = 'ВКонтакте пока не подключён. Черновик можно исправлять, сохранять и копировать.';
+      if (vkAccessToken || vkConfigured) await checkVkConnection(password);
+      else if (vkState) vkState.textContent = 'Нажмите «Подключить мою страницу ВК». Черновик уже можно исправлять, сохранять и копировать.';
       editorSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
       setStatus(status, error instanceof Error ? error.message : 'Произошла ошибка.', true);
@@ -326,7 +378,7 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
       const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${password}`,
+          ...ownerHeaders(password),
           'X-File-Size': String(item.file.size),
           'X-File-Type': item.file.type,
           'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
@@ -363,7 +415,7 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
       setStatus(publishStatus, publishAt ? 'Ставим пост в очередь ВКонтакте…' : 'Публикуем пост во ВКонтакте…');
       const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${password}`, 'Content-Type': 'application/json' },
+        headers: ownerHeaders(password, true),
         body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
       });
       const data = await response.json() as { published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string };
@@ -383,12 +435,14 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
   });
 
   updateScheduleMinimum();
+  void initializeVkMiniApp();
 </script>
 
 <style>
   .owner-studio{min-height:70vh;background:var(--paper-2)}
   .studio-wrap{max-width:980px}.studio-heading{max-width:760px;margin-bottom:1.5rem}.studio-heading>p:not(.eyebrow){color:var(--muted)}
   .privacy-note{margin-bottom:1.5rem;padding:1rem 1.2rem;border-left:4px solid var(--honey);background:rgba(255,255,255,.65)}
+  .vk-connect-panel{margin-top:1rem;padding:1rem;border:1px solid var(--line);border-radius:14px;background:var(--paper-2)}.vk-connect-panel p{margin:.25rem 0 .75rem}
   .studio-card{margin-bottom:1.5rem;padding:clamp(1.2rem,4vw,2.2rem);border:1px solid var(--line);border-radius:var(--radius);background:var(--white);box-shadow:var(--shadow)}
   .studio-step+.studio-step{margin-top:2rem;padding-top:2rem;border-top:1px solid var(--line)}
   .step-number{margin-bottom:.4rem;color:var(--apple);font-size:.75rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
