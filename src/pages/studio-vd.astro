@@ -297,6 +297,20 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     });
     return result.response as T;
   };
+  const publishVkThroughBridge = async (parameters: Record<string, string | number>) => {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      try {
+        return await callVkThroughBridge<{ post_id?: number }>('wall.post', parameters);
+      } catch (error) {
+        lastError = error;
+        if (attempt === 4) break;
+        setStatus(publishStatus, 'Ответ ВКонтакте прервался. Повторяем безопасно с тем же номером запроса (' + (attempt + 1) + ' из 4)…');
+        await new Promise((resolve) => window.setTimeout(resolve, attempt * 1500));
+      }
+    }
+    throw lastError ?? new Error('Не удалось получить ответ ВКонтакте.');
+  };
   const requestVkAccessToken = async () => {
     if (!vkBridgeReady) throw new Error('Приложение ВКонтакте ещё не готово.');
     const result = await bridge.send('VKWebAppGetAuthToken', {
@@ -643,7 +657,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         if (attachments.length) parameters.attachments = attachments.join(',');
         if (publishAt) parameters.publish_date = publishAt;
         wallRequestStarted = true;
-        const result = await callVkThroughBridge<{ post_id?: number }>('wall.post', parameters);
+        const result = await publishVkThroughBridge(parameters);
         if (!result.post_id) throw new Error('ВКонтакте не вернул номер записи.');
         data = {
           published: true,
@@ -682,7 +696,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       });
     } catch (error) {
       const fallback = wallRequestStarted
-        ? 'Не удалось получить подтверждение от ВКонтакте. Не нажимайте кнопку повторно: сначала проверьте отложенные записи на своей странице.'
+        ? 'Не удалось получить подтверждение от ВКонтакте. На этой странице можно повторить отправку: используется тот же уникальный номер запроса, поэтому ВКонтакте не должен создать дубликат.'
         : 'Не удалось связаться с сервисом публикации. Пост не создан и не поставлен в очередь.';
       const detail = russianError(error, fallback);
       const attachmentNote = uploadedAttachmentCount ? ` Вложения успешно загружены: ${uploadedAttachmentCount} из ${mediaItems.length}.` : '';
