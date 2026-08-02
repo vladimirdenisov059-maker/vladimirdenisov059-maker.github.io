@@ -89,6 +89,9 @@ const normalizePhotoUploadResult = (value: unknown): PhotoUploadResult | null =>
         : Number.NaN;
     const hash = typeof candidate.hash === 'string' ? candidate.hash.trim() : '';
     let photo = typeof candidate.photo === 'string' ? candidate.photo.trim() : '';
+    if (!photo && candidate.photo !== undefined) {
+      try { photo = JSON.stringify(candidate.photo); } catch { photo = ''; }
+    }
     if (!photo && candidate.photos_list !== undefined) {
       if (typeof candidate.photos_list === 'string') {
         photo = candidate.photos_list.trim();

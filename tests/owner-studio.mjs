@@ -89,7 +89,7 @@ globalThis.fetch = async (url, options = {}) => {
   if (target === 'https://pu.vk.ru/test-photo-upload') {
     photoUploadWasStreamed = Boolean(options.body);
     if (malformedPhotoUpload) return Response.json({ request_id: 'test-request' });
-    return Response.json({ response: { server: '7', photos_list: [{ photo: 'payload' }], hash: 'photo-hash' } });
+    return Response.json({ response: { server: '7', photo: [{ photo: 'payload' }], hash: 'photo-hash' } });
   }
   if (target.includes('/method/photos.saveWallPhoto')) {
     return Response.json({ response: [{ owner_id: Number(ownerId), id: 77 }] });
