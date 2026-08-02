@@ -160,6 +160,10 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const historyList = document.querySelector<HTMLElement>('[data-history-list]');
 
   type MediaItem = { id: string; file: File; previewUrl: string };
+  type VkUploadServer = { upload_url?: string };
+  type VkPhotoUploadResult = { server?: number; photo?: string; hash?: string };
+  type VkSavedPhoto = { id?: number; owner_id?: number; access_key?: string };
+  type VkSavedVideo = VkUploadServer & { video_id?: number; owner_id?: number; access_key?: string };
   type HistoryEntry = { id: string; platform: 'vk' | 'ok' | 'dzen'; title: string; status: 'published' | 'scheduled' | 'error'; createdAt: string; scheduledAt?: string; url?: string };
   let mediaItems: MediaItem[] = [];
   const uploadedAttachments = new Map<string, string>();
@@ -293,6 +297,16 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     });
     return result.response as T;
   };
+  const requestVkAccessToken = async () => {
+    if (!vkBridgeReady) throw new Error('Приложение ВКонтакте ещё не готово.');
+    const result = await bridge.send('VKWebAppGetAuthToken', {
+      app_id: VK_APP_ID,
+      scope: 'wall,photos,video',
+    });
+    if (!result.access_token) throw new Error('ВКонтакте не выдал ключ доступа.');
+    vkAccessToken = result.access_token;
+    return vkAccessToken;
+  };
 
   const checkVkConnection = async (password: string) => {
     try {
@@ -356,11 +370,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     vkConnectButton.disabled = true;
     setStatus(vkState, 'ВКонтакте запрашивает разрешения на стену, фото и видео…');
     try {
-      const result = await bridge.send('VKWebAppGetAuthToken', {
-        app_id: VK_APP_ID,
-        scope: 'wall,photos,video',
-      });
-      vkAccessToken = result.access_token;
+      await requestVkAccessToken();
       await checkVkConnection(password);
     } catch {
       vkAccessToken = '';
@@ -483,22 +493,60 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       setStatus(mediaStatus, `Загружаем во ВКонтакте файл ${index + 1} из ${mediaItems.length}: ${item.file.name}`);
       let attachment: string;
       try {
+        let bridgeUploadUrl = '';
+        let bridgeVideo: VkSavedVideo | null = null;
+        if (vkAccessToken && vkBridgeReady && vkOwnerId) {
+          if (kind === 'photo') {
+            const server = await callVkThroughBridge<VkUploadServer>('photos.getWallUploadServer');
+            if (!server.upload_url) throw new Error('ВКонтакте не выдал адрес для загрузки фотографии.');
+            bridgeUploadUrl = server.upload_url;
+          } else {
+            bridgeVideo = await callVkThroughBridge<VkSavedVideo>('video.save', {
+              name: item.file.name.replace(/\.[^.]+$/, '').slice(0, 128) || 'Видео из сада Владимира Денисова',
+              wallpost: 0,
+            });
+            if (!bridgeVideo.upload_url || !bridgeVideo.video_id || !bridgeVideo.owner_id || bridgeVideo.owner_id !== vkOwnerId) {
+              throw new Error('ВКонтакте не подготовил загрузку видео.');
+            }
+            bridgeUploadUrl = bridgeVideo.upload_url;
+          }
+        }
+
         const body = new FormData();
         const extension = item.file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'photo' ? 'jpg' : 'mp4');
         body.append(kind === 'photo' ? 'photo' : 'video_file', item.file, `garden-${kind}.${extension}`);
+        const headers: Record<string, string> = {
+          ...ownerHeaders(password),
+          'X-File-Size': String(item.file.size),
+          'X-File-Type': item.file.type,
+          'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
+          ...(bridgeUploadUrl ? { 'X-VK-Upload-URL': bridgeUploadUrl } : {}),
+        };
+        if (bridgeUploadUrl) delete headers['X-VK-Access-Token'];
         const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
-          method: 'POST',
-          headers: {
-            ...ownerHeaders(password),
-            'X-File-Size': String(item.file.size),
-            'X-File-Type': item.file.type,
-            'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
-          },
-          body,
+          method: 'POST', headers, body,
         });
-        const data = await readApiJson<{ uploaded?: boolean; attachment?: string; error?: string }>(response, `Не удалось прочитать ответ после загрузки файла «${item.file.name}».`);
-        if (!response.ok || !data.uploaded || !data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
-        attachment = data.attachment;
+        const data = await readApiJson<{ uploaded?: boolean; attachment?: string; uploadResult?: VkPhotoUploadResult; error?: string }>(response, `Не удалось прочитать ответ после загрузки файла «${item.file.name}».`);
+        if (!response.ok || !data.uploaded) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
+
+        if (bridgeUploadUrl && kind === 'photo') {
+          const uploadResult = data.uploadResult;
+          if (!uploadResult?.photo || !uploadResult.hash || uploadResult.server === undefined) throw new Error('ВКонтакте не подтвердил загрузку фотографии.');
+          const saved = await callVkThroughBridge<VkSavedPhoto[]>('photos.saveWallPhoto', {
+            user_id: Number(vkOwnerId),
+            photo: uploadResult.photo,
+            server: uploadResult.server,
+            hash: uploadResult.hash,
+          });
+          const photo = saved[0];
+          if (!photo?.id || !photo.owner_id || photo.owner_id !== vkOwnerId) throw new Error('ВКонтакте не сохранил фотографию.');
+          attachment = `photo${photo.owner_id}_${photo.id}${photo.access_key ? `_${photo.access_key}` : ''}`;
+        } else if (bridgeUploadUrl && bridgeVideo) {
+          attachment = `video${bridgeVideo.owner_id}_${bridgeVideo.video_id}${bridgeVideo.access_key ? `_${bridgeVideo.access_key}` : ''}`;
+        } else {
+          if (!data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
+          attachment = data.attachment;
+        }
       } catch (error) {
         const uploadedCount = attachments.length;
         const detail = russianError(error, 'Нет связи с защищённым сервисом загрузки. Проверьте интернет и повторите попытку.');
@@ -524,6 +572,17 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       confirmation = `Поставить пост в очередь ВК на ${date.toLocaleString('ru-RU')}?`;
     }
     if (!window.confirm(confirmation)) return;
+
+    if (isVkMiniApp && vkBridgeReady) {
+      setStatus(publishStatus, 'Обновляем разрешение ВКонтакте перед публикацией…');
+      try {
+        await requestVkAccessToken();
+        await checkVkConnection(password);
+        if (!vkConfigured || !vkOwnerId) throw new Error('ВКонтакте не подтвердил подключение страницы.');
+      } catch (error) {
+        return setStatus(publishStatus, russianError(error, 'Не удалось обновить разрешение ВКонтакте. Нажмите «Подключить мою страницу ВК» и повторите.'), true);
+      }
+    }
 
     busy = true; updatePublishButton();
     setStatus(publishStatus, mediaItems.length ? 'Сначала загружаем выбранные вложения…' : 'Отправляем одобренный текст во ВКонтакте…');

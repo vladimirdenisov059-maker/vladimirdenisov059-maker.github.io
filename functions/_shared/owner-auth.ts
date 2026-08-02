@@ -40,7 +40,7 @@ export const ownerCorsHeaders = (request: Request, env: OwnerEnv) => {
     ? {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-VK-Access-Token, X-File-Size, X-File-Type, X-Video-Title',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-VK-Access-Token, X-VK-Upload-URL, X-File-Size, X-File-Type, X-Video-Title',
         'Access-Control-Max-Age': '86400',
         Vary: 'Origin',
       }

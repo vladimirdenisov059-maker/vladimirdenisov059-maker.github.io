@@ -46,7 +46,12 @@ const safeUploadUrl = (value: string | undefined) => {
   if (!value) return null;
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' ? url : null;
+    const hostname = url.hostname.toLowerCase();
+    const isVkUploadHost = hostname === 'vk.com'
+      || hostname.endsWith('.vk.com')
+      || hostname.endsWith('.vkuser.net')
+      || hostname.endsWith('.vk-cdn.net');
+    return url.protocol === 'https:' && isVkUploadHost ? url : null;
   } catch {
     return null;
   }
@@ -97,15 +102,6 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   if (!auth.ok) {
     return respond({ error: auth.status === 503 ? 'Закрытый редактор ещё не настроен.' : 'Неверный пароль владельца.' }, auth.status);
   }
-  let vkIdentity;
-  try {
-    vkIdentity = await resolvePersonalVkUser(request, env);
-  } catch (error) {
-    const code = vkErrorCode(error);
-    return respond({ error: `Не удалось подключить личную страницу ВК${code ? ` (код ${code})` : ''}.` }, 503);
-  }
-  const { ownerId, accessToken } = vkIdentity;
-
   const requestUrl = new URL(request.url);
   const kind = requestUrl.searchParams.get('kind');
   const fileSize = Number(request.headers.get('X-File-Size') ?? '0');
@@ -119,6 +115,41 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   }
   if (kind !== 'photo' && kind !== 'video') return respond({ error: 'Неизвестный тип вложения.' }, 400);
 
+  const bridgeUploadUrl = request.headers.get('X-VK-Upload-URL');
+  if (bridgeUploadUrl) {
+    const uploadUrl = safeUploadUrl(bridgeUploadUrl);
+    if (!uploadUrl) return respond({ error: 'ВКонтакте вернул недопустимый адрес загрузки.' }, 400);
+    try {
+      const uploaded = await uploadBody(request, uploadUrl);
+      const uploadReply = await uploaded.text();
+      if (!uploaded.ok) {
+        console.error('VK bridge upload server rejected file', kind, uploaded.status, uploadReply.slice(0, 500));
+        return respond({ error: `Сервер загрузки ВКонтакте ответил HTTP ${uploaded.status}.` }, 502);
+      }
+      let uploadResult: Record<string, unknown> = {};
+      if (uploadReply.trim()) {
+        try {
+          uploadResult = JSON.parse(uploadReply) as Record<string, unknown>;
+        } catch {
+          return respond({ error: 'Сервер загрузки ВКонтакте вернул непонятный ответ.' }, 502);
+        }
+      }
+      if ('error' in uploadResult) return respond({ error: 'ВКонтакте отклонил загружаемый файл.' }, 502);
+      return respond({ uploaded: true, kind, uploadResult });
+    } catch (error) {
+      console.error('VK bridge media proxy failed', kind, error);
+      return respond({ error: 'Не удалось передать файл на сервер загрузки ВКонтакте.' }, 502);
+    }
+  }
+
+  let vkIdentity;
+  try {
+    vkIdentity = await resolvePersonalVkUser(request, env);
+  } catch (error) {
+    const code = vkErrorCode(error);
+    return respond({ error: `Не удалось подключить личную страницу ВК${code ? ` (код ${code})` : ''}.` }, 503);
+  }
+  const { ownerId, accessToken } = vkIdentity;
   try {
     if (kind === 'photo') {
       const server = await callVk<UploadServer>(env, 'photos.getWallUploadServer', new URLSearchParams(), accessToken);

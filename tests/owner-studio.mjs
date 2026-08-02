@@ -26,7 +26,7 @@ const makeRequest = (path, body, authorization = `Bearer ${password}`) =>
     body: JSON.stringify(body),
   });
 
-const makeMediaRequest = (kind, file) => {
+const makeMediaRequest = (kind, file, uploadUrl = '') => {
   const body = new FormData();
   body.append(kind === 'photo' ? 'photo' : 'video_file', file, kind === 'photo' ? 'garden.jpg' : 'garden.mp4');
   return new Request(`https://gardens-of-donbas-api.pages.dev/api/owner/upload-vk-media?kind=${kind}`, {
@@ -37,6 +37,7 @@ const makeMediaRequest = (kind, file) => {
       'X-File-Size': String(file.size),
       'X-File-Type': file.type,
       'X-Video-Title': 'garden-video',
+      ...(uploadUrl ? { 'X-VK-Upload-URL': uploadUrl } : {}),
     },
     body,
   });
@@ -53,6 +54,7 @@ assert.equal(preflight.status, 204);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /Authorization/);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-File-Size/);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-VK-Access-Token/);
+assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-VK-Upload-URL/);
 
 const missingPasswordSetup = await generateVkDraft({
   request: makeRequest('/api/owner/generate-vk', { plant: 'киви Стратона' }),
@@ -81,9 +83,9 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ response: [{ id: Number(ownerId), first_name: 'Владимир', last_name: 'Денисов', screen_name: 'dionis1959' }] });
   }
   if (target.includes('/method/photos.getWallUploadServer')) {
-    return Response.json({ response: { upload_url: 'https://upload.vk.test/photo' } });
+    return Response.json({ response: { upload_url: 'https://pu.vk.com/test-photo-upload' } });
   }
-  if (target === 'https://upload.vk.test/photo') {
+  if (target === 'https://pu.vk.com/test-photo-upload') {
     photoUploadWasStreamed = Boolean(options.body);
     return Response.json({ server: 7, photo: '[{"photo":"payload"}]', hash: 'photo-hash' });
   }
@@ -91,9 +93,9 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ response: [{ owner_id: Number(ownerId), id: 77 }] });
   }
   if (target.includes('/method/video.save')) {
-    return Response.json({ response: { upload_url: 'https://upload.vk.test/video', owner_id: Number(ownerId), video_id: 88 } });
+    return Response.json({ response: { upload_url: 'https://pu.vk.com/test-video-upload', owner_id: Number(ownerId), video_id: 88 } });
   }
-  if (target === 'https://upload.vk.test/video') {
+  if (target === 'https://pu.vk.com/test-video-upload') {
     videoUploadWasStreamed = Boolean(options.body);
     return Response.json({ size: 1024, owner_id: Number(ownerId), video_id: 88 });
   }
@@ -148,6 +150,21 @@ const videoBody = await videoResponse.json();
 assert.equal(videoResponse.status, 200);
 assert.equal(videoBody.attachment, 'video12345_88');
 assert.equal(videoUploadWasStreamed, true);
+const bridgeVideoResponse = await uploadVkMedia({
+  request: makeMediaRequest('video', video, 'https://pu.vk.com/test-video-upload'),
+  env: { ADMIN_PASSWORD: password },
+});
+const bridgeVideoBody = await bridgeVideoResponse.json();
+assert.equal(bridgeVideoResponse.status, 200);
+assert.equal(bridgeVideoBody.uploaded, true);
+assert.equal(bridgeVideoBody.kind, 'video');
+assert.deepEqual(bridgeVideoBody.uploadResult, { size: 1024, owner_id: Number(ownerId), video_id: 88 });
+
+const unsafeBridgeResponse = await uploadVkMedia({
+  request: makeMediaRequest('video', video, 'https://example.com/upload'),
+  env: { ADMIN_PASSWORD: password },
+});
+assert.equal(unsafeBridgeResponse.status, 400);
 
 const publishWithoutApproval = await publishVk({
   request: makeRequest('/api/owner/publish-vk', {
@@ -193,6 +210,9 @@ const uploadSource = readFileSync(new URL('../functions/api/owner/upload-vk-medi
 assert.match(studioSource, /VKWebAppInit/);
 assert.match(studioSource, /VKWebAppGetAuthToken/);
 assert.match(studioSource, /X-VK-Access-Token/);
+assert.match(studioSource, /X-VK-Upload-URL/);
+assert.match(studioSource, /photos\.saveWallPhoto/);
+assert.match(studioSource, /video\.save/);
 assert.doesNotMatch(studioSource, /fetch\(server\.upload_url/);
 assert.doesNotMatch(studioSource, /fetch\(video\.upload_url/);
 assert.match(studioSource, /Пост не создан и не поставлен в очередь/);
@@ -202,5 +222,7 @@ assert.match(studioSource, /garden-\$\{kind\}\.\$\{extension\}/);
 assert.match(uploadSource, /FixedLengthStream/);
 assert.match(uploadSource, /Content-Length/);
 assert.match(uploadSource, /сервер загрузки ответил HTTP/);
+assert.match(uploadSource, /bridgeUploadUrl/);
+assert.match(uploadSource, /isVkUploadHost/);
 
 console.log('Owner studio checks passed: authentication, VK Mini App connection, media uploads and scheduling');
