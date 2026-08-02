@@ -1,9 +1,18 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "gardens-of-donbas-api",
-  "compatibility_date": "2026-07-30",
-  "pages_build_output_dir": "./cloudflare-api-public",
-  "secrets": {
-    "required": ["PROXYAPI_KEY", "ADMIN_PASSWORD"]
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "gardens-of-donbas-api",
+	"compatibility_date": "2026-07-30",
+	"pages_build_output_dir": "./cloudflare-api-public",
+	"secrets": {
+		"required": [
+			"PROXYAPI_KEY",
+			"ADMIN_PASSWORD"
+		]
+	},
+	"kv_namespaces": [
+		{
+			"binding": "PUBLICATION_HISTORY",
+			"id": "5bc03dff333640f6825cf43c0d2f0fb0"
+		}
+	]
 }

@@ -7,6 +7,7 @@ const draftEndpoint = `${apiOrigin}/api/owner/generate-vk`;
 const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
 const statusEndpoint = `${apiOrigin}/api/owner/vk-status`;
 const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
+const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
 ---
 
 <BaseLayout title="Редактор Владимира" description="Закрытый редактор авторских публикаций Владимира Денисова.">
@@ -22,7 +23,7 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
         <strong>Как это работает:</strong> создайте черновик, исправьте текст, добавьте фотографии или видео, выберите публикацию сейчас либо по расписанию и только затем подтвердите отправку.
       </div>
 
-      <form class="studio-card access-card" data-owner-form data-draft-endpoint={draftEndpoint} data-publish-endpoint={publishEndpoint} data-status-endpoint={statusEndpoint} data-upload-endpoint={uploadEndpoint}>
+      <form class="studio-card access-card" data-owner-form data-draft-endpoint={draftEndpoint} data-publish-endpoint={publishEndpoint} data-status-endpoint={statusEndpoint} data-upload-endpoint={uploadEndpoint} data-history-endpoint={historyEndpoint}>
         <section class="studio-step" aria-labelledby="step-access">
           <div class="step-number">Доступ</div>
           <h2 id="step-access">Пароль владельца</h2>
@@ -107,6 +108,15 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
         <p class="studio-status" data-publish-status aria-live="polite"></p>
         <p data-published-link></p>
       </section>
+
+      <section class="studio-card studio-step history-step" aria-labelledby="publication-history">
+        <div class="step-number">История</div>
+        <h2 id="publication-history">История публикаций</h2>
+        <p>Хранятся только дата, площадка, название, статус и ссылка. Тексты постов, фотографии и видео здесь не сохраняются.</p>
+        <button class="secondary-button" type="button" data-history-refresh>Обновить историю</button>
+        <p class="studio-status" data-history-status aria-live="polite">Введите пароль владельца и нажмите «Обновить историю».</p>
+        <div class="history-list" data-history-list></div>
+      </section>
     </div>
   </section>
 </BaseLayout>
@@ -145,8 +155,12 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
   const vkState = document.querySelector<HTMLElement>('[data-vk-state]');
   const vkConnectButton = document.querySelector<HTMLButtonElement>('[data-vk-connect]');
   const publishedLink = document.querySelector<HTMLElement>('[data-published-link]');
+  const historyRefresh = document.querySelector<HTMLButtonElement>('[data-history-refresh]');
+  const historyStatus = document.querySelector<HTMLElement>('[data-history-status]');
+  const historyList = document.querySelector<HTMLElement>('[data-history-list]');
 
   type MediaItem = { id: string; file: File; previewUrl: string };
+  type HistoryEntry = { id: string; platform: 'vk' | 'ok' | 'dzen'; title: string; status: 'published' | 'scheduled' | 'error'; createdAt: string; scheduledAt?: string; url?: string };
   let mediaItems: MediaItem[] = [];
   const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
@@ -230,6 +244,47 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     return headers;
   };
 
+  const platformLabels = { vk: 'ВКонтакте', ok: 'Одноклассники', dzen: 'Дзен' };
+  const statusLabels = { published: 'Опубликовано', scheduled: 'В очереди', error: 'Ошибка' };
+  const formatHistoryDate = (value?: string) => value ? new Date(value).toLocaleString('ru-RU') : '—';
+  const renderHistory = (entries: HistoryEntry[]) => {
+    if (!historyList) return;
+    historyList.replaceChildren();
+    if (!entries.length) { const empty = document.createElement('p'); empty.className = 'history-empty'; empty.textContent = 'Публикаций пока нет.'; historyList.append(empty); return; }
+    const table = document.createElement('table'); table.className = 'history-table';
+    const head = document.createElement('thead'); head.innerHTML = '<tr><th>Дата и время</th><th>Площадка</th><th>Материал</th><th>Статус</th><th>Ссылка</th></tr>';
+    const body = document.createElement('tbody');
+    entries.forEach((entry) => {
+      const row = document.createElement('tr');
+      const date = document.createElement('td'); date.textContent = entry.status === 'scheduled' ? formatHistoryDate(entry.scheduledAt) : formatHistoryDate(entry.createdAt);
+      const platform = document.createElement('td'); platform.textContent = platformLabels[entry.platform];
+      const title = document.createElement('td'); title.textContent = entry.title;
+      const state = document.createElement('td'); state.textContent = statusLabels[entry.status]; state.dataset.historyStatus = entry.status;
+      const destination = document.createElement('td');
+      if (entry.url) { const link = document.createElement('a'); link.href = entry.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Открыть'; destination.append(link); } else destination.textContent = '—';
+      row.append(date, platform, title, state, destination); body.append(row);
+    });
+    table.append(head, body); historyList.append(table);
+  };
+  const historyRequest = async (action: 'list' | 'add', entry?: HistoryEntry) => {
+    const password = passwordInput?.value ?? '';
+    if (password.length < 12) throw new Error('Введите пароль владельца, чтобы открыть историю.');
+    const response = await fetch(form?.dataset.historyEndpoint || '/api/owner/publication-history', { method: 'POST', headers: ownerHeaders(password, true), body: JSON.stringify({ action, ...(entry ? { entry } : {}) }) });
+    const data = await response.json() as { entries?: HistoryEntry[]; saved?: boolean; error?: string };
+    if (!response.ok) throw new Error(data.error || 'Не удалось открыть историю публикаций.');
+    return data;
+  };
+  const loadHistory = async () => {
+    if (historyRefresh) historyRefresh.disabled = true; setStatus(historyStatus, 'Загружаем историю публикаций…');
+    try { const data = await historyRequest('list'); renderHistory(data.entries ?? []); setStatus(historyStatus, data.entries?.length ? 'Записей в истории: ' + data.entries.length + '.' : 'История пока пуста.'); }
+    catch (error) { setStatus(historyStatus, error instanceof Error ? error.message : 'Не удалось открыть историю публикаций.', true); }
+    finally { if (historyRefresh) historyRefresh.disabled = false; }
+  };
+  const saveHistory = async (entry: HistoryEntry) => {
+    try { await historyRequest('add', entry); await loadHistory(); }
+    catch (error) { setStatus(historyStatus, error instanceof Error ? error.message : 'Не удалось сохранить запись в истории.', true); }
+  };
+  historyRefresh?.addEventListener('click', () => void loadHistory());
   const callVkThroughBridge = async <T,>(method: string, parameters: Record<string, string | number> = {}) => {
     if (!vkAccessToken || !vkBridgeReady) throw new Error('Сначала подключите свою страницу ВК.');
     const result = await bridge.send('VKWebAppCallAPIMethod', {
@@ -404,39 +459,18 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
     URL.revokeObjectURL(url);
   });
 
-  const uploadMediaThroughBridge = async (item: MediaItem) => {
-    if (!vkOwnerId) throw new Error('Сначала подключите личную страницу ВК.');
-    const kind = item.file.type.startsWith('image/') ? 'photo' : 'video';
-    if (kind === 'photo') {
-      const server = await callVkThroughBridge<{ upload_url?: string }>('photos.getWallUploadServer');
-      if (!server.upload_url) throw new Error('ВКонтакте не подготовил загрузку фотографии.');
-      const body = new FormData();
-      body.append('photo', item.file, item.file.name);
-      const uploaded = await fetch(server.upload_url, { method: 'POST', body });
-      const uploadData = await uploaded.json() as { server?: number; photo?: string; hash?: string };
-      if (!uploaded.ok || uploadData.server === undefined || !uploadData.photo || !uploadData.hash) throw new Error('ВКонтакте не принял фотографию.');
-      const saved = await callVkThroughBridge<Array<{ id?: number; owner_id?: number; access_key?: string }>>('photos.saveWallPhoto', {
-        user_id: vkOwnerId,
-        server: uploadData.server,
-        photo: uploadData.photo,
-        hash: uploadData.hash,
-      });
-      const photo = saved[0];
-      if (!photo?.id || !photo.owner_id) throw new Error('ВКонтакте не сохранил фотографию.');
-      return `photo${photo.owner_id}_${photo.id}${photo.access_key ? `_${photo.access_key}` : ''}`;
-    }
+  const russianError = (error: unknown, fallback: string) => {
+    const message = error instanceof Error ? error.message.trim() : '';
+    if (!message || /failed to fetch|load failed|networkerror|network request failed/i.test(message) || !/[А-ЯЁа-яё]/.test(message)) return fallback;
+    return message;
+  };
 
-    const video = await callVkThroughBridge<{ upload_url?: string; owner_id?: number; video_id?: number; access_key?: string }>('video.save', {
-      name: item.file.name.replace(/\.[^.]+$/, '').slice(0, 128) || 'Видео из сада Владимира Денисова',
-      wallpost: 0,
-    });
-    if (!video.upload_url || !video.owner_id || !video.video_id) throw new Error('ВКонтакте не подготовил загрузку видео.');
-    const body = new FormData();
-    body.append('video_file', item.file, item.file.name);
-    const uploaded = await fetch(video.upload_url, { method: 'POST', body });
-    if (!uploaded.ok) throw new Error('ВКонтакте не принял видео.');
-    await uploaded.text();
-    return `video${video.owner_id}_${video.video_id}${video.access_key ? `_${video.access_key}` : ''}`;
+  const readApiJson = async <T,>(response: Response, fallback: string): Promise<T> => {
+    try {
+      return await response.json() as T;
+    } catch {
+      throw new Error(response.ok ? fallback : `Сервис публикации вернул ошибку ${response.status}. Попробуйте ещё раз позже.`);
+    }
   };
 
   const uploadMedia = async (password: string) => {
@@ -448,9 +482,7 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
       const kind = item.file.type.startsWith('image/') ? 'photo' : 'video';
       setStatus(mediaStatus, `Загружаем во ВКонтакте файл ${index + 1} из ${mediaItems.length}: ${item.file.name}`);
       let attachment: string;
-      if (vkAccessToken && vkBridgeReady) {
-        attachment = await uploadMediaThroughBridge(item);
-      } else {
+      try {
         const body = new FormData();
         body.append(kind === 'photo' ? 'photo' : 'video_file', item.file, item.file.name);
         const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
@@ -463,17 +495,21 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
           },
           body,
         });
-        const data = await response.json() as { uploaded?: boolean; attachment?: string; error?: string };
+        const data = await readApiJson<{ uploaded?: boolean; attachment?: string; error?: string }>(response, `Не удалось прочитать ответ после загрузки файла «${item.file.name}».`);
         if (!response.ok || !data.uploaded || !data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
         attachment = data.attachment;
+      } catch (error) {
+        const uploadedCount = attachments.length;
+        const detail = russianError(error, 'Нет связи с защищённым сервисом загрузки. Проверьте интернет и повторите попытку.');
+        setStatus(mediaStatus, `Файл «${item.file.name}» не загружен. ${detail}`, true);
+        throw new Error(`Публикация остановлена на загрузке вложений: файл «${item.file.name}» не загружен. ${uploadedCount ? `До сбоя загружено файлов: ${uploadedCount}. ` : ''}Пост не создан и не поставлен в очередь.`);
       }
       uploadedAttachments.set(item.id, attachment);
       attachments.push(attachment);
     }
-    if (mediaItems.length) setStatus(mediaStatus, 'Все выбранные файлы загружены во ВКонтакте.');
+    if (mediaItems.length) setStatus(mediaStatus, `Все вложения загружены во ВКонтакте: ${attachments.length} из ${mediaItems.length}.`);
     return attachments;
   };
-
   publishButton?.addEventListener('click', async () => {
     const message = draft?.value.trim() ?? '';
     const password = passwordInput?.value ?? '';
@@ -490,8 +526,11 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
 
     busy = true; updatePublishButton();
     setStatus(publishStatus, mediaItems.length ? 'Сначала загружаем выбранные вложения…' : 'Отправляем одобренный текст во ВКонтакте…');
+    let uploadedAttachmentCount = 0;
+    let wallRequestStarted = false;
     try {
       const attachments = await uploadMedia(password);
+      uploadedAttachmentCount = attachments.length;
       setStatus(publishStatus, publishAt ? 'Ставим пост в очередь ВКонтакте…' : 'Публикуем пост во ВКонтакте…');
       let data: { published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string };
       if (vkAccessToken && vkBridgeReady && vkOwnerId) {
@@ -502,6 +541,7 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
         };
         if (attachments.length) parameters.attachments = attachments.join(',');
         if (publishAt) parameters.publish_date = publishAt;
+        wallRequestStarted = true;
         const result = await callVkThroughBridge<{ post_id?: number }>('wall.post', parameters);
         if (!result.post_id) throw new Error('ВКонтакте не вернул номер записи.');
         data = {
@@ -511,17 +551,19 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
           url: `https://vk.com/wall${vkOwnerId}_${result.post_id}`,
         };
       } else {
+        wallRequestStarted = true;
         const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
           method: 'POST',
           headers: ownerHeaders(password, true),
           body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
         });
-        data = await response.json() as typeof data;
+        data = await readApiJson<typeof data>(response, 'Не удалось прочитать ответ сервиса публикации.');
         if (!response.ok) throw new Error(data.error || 'Не удалось отправить пост.');
       }
       if (!data.published || !data.url) throw new Error(data.error || 'Не удалось отправить пост.');
       const scheduledDate = data.publishAt ? new Date(data.publishAt * 1000) : null;
-      setStatus(publishStatus, data.scheduled && scheduledDate ? `Пост поставлен в очередь на ${scheduledDate.toLocaleString('ru-RU')}.` : 'Пост опубликован во ВКонтакте.');
+      const attachmentNote = uploadedAttachmentCount ? ` Вложения прикреплены: ${uploadedAttachmentCount} из ${mediaItems.length}.` : ' Публикация без вложений.';
+      setStatus(publishStatus, (data.scheduled && scheduledDate ? `Пост поставлен в очередь на ${scheduledDate.toLocaleString('ru-RU')}.` : 'Пост опубликован во ВКонтакте.') + attachmentNote);
       if (publishedLink) {
         const link = document.createElement('a');
         link.href = data.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
@@ -529,8 +571,26 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
         publishedLink.replaceChildren(link);
       }
       if (approval) approval.checked = false;
+      await saveHistory({
+        id: publishRequestId, platform: 'vk',
+        title: plantInput?.value.trim().slice(0, 120) || 'Публикация без названия',
+        status: data.scheduled ? 'scheduled' : 'published',
+        createdAt: new Date().toISOString(),
+        ...(data.publishAt ? { scheduledAt: new Date(data.publishAt * 1000).toISOString() } : {}),
+        url: data.url,
+      });
     } catch (error) {
-      setStatus(publishStatus, error instanceof Error ? error.message : 'Произошла ошибка публикации.', true);
+      const fallback = wallRequestStarted
+        ? 'Не удалось получить подтверждение от ВКонтакте. Не нажимайте кнопку повторно: сначала проверьте отложенные записи на своей странице.'
+        : 'Не удалось связаться с сервисом публикации. Пост не создан и не поставлен в очередь.';
+      const detail = russianError(error, fallback);
+      const attachmentNote = uploadedAttachmentCount ? ` Вложения успешно загружены: ${uploadedAttachmentCount} из ${mediaItems.length}.` : '';
+      setStatus(publishStatus, `${detail}${attachmentNote}`, true);
+      void saveHistory({
+        id: publishRequestId, platform: 'vk',
+        title: plantInput?.value.trim().slice(0, 120) || 'Публикация без названия',
+        status: 'error', createdAt: new Date().toISOString(),
+      });
     } finally { busy = false; updatePublishButton(); }
   });
 
@@ -557,5 +617,6 @@ const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
   .media-card img,.media-card video{display:block;width:100%;height:170px;object-fit:cover;background:#111}.media-info{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;padding:.75rem}.media-info strong{max-width:100%;overflow-wrap:anywhere}.media-info span{color:var(--muted);font-size:.82rem}.remove-media{padding:.35rem .7rem;margin-top:.25rem}
   .publish-mode{display:flex;flex-wrap:wrap;gap:.8rem 1.4rem;margin:1rem 0;padding:1rem;border:1px solid var(--line);border-radius:14px}.publish-mode legend{padding:0 .4rem;color:var(--forest);font-weight:800}.publish-mode label{display:flex!important;align-items:center;gap:.45rem;margin:0!important}
   .approval-row{display:flex!important;align-items:flex-start;gap:.75rem;padding:1rem;border:1px solid var(--line);border-radius:14px;background:var(--paper)}.approval-row input{width:1.2rem;height:1.2rem;margin-top:.2rem;flex:0 0 auto}.publish-button:disabled{cursor:not-allowed;opacity:.5;transform:none}
+.history-list{margin-top:1rem;overflow-x:auto}.history-table{width:100%;border-collapse:collapse;font-size:.84rem}.history-table th,.history-table td{padding:.75rem .65rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.history-table th{color:var(--forest);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}.history-table td[data-history-status=published]{color:var(--forest);font-weight:800}.history-table td[data-history-status=scheduled]{color:#8a641d;font-weight:800}.history-table td[data-history-status=error]{color:var(--apple);font-weight:800}.history-empty{padding:1rem;background:var(--paper);border-radius:14px;color:var(--muted)}
   [hidden]{display:none!important}@media(max-width:720px){.field-grid{grid-template-columns:1fr}.editor-meta{flex-direction:column}.studio-step .button{width:100%}.media-grid{grid-template-columns:1fr}}
 </style>

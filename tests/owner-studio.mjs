@@ -192,5 +192,10 @@ const studioSource = readFileSync(new URL('../src/pages/studio-vd.astro', import
 assert.match(studioSource, /VKWebAppInit/);
 assert.match(studioSource, /VKWebAppGetAuthToken/);
 assert.match(studioSource, /X-VK-Access-Token/);
+assert.doesNotMatch(studioSource, /fetch\(server\.upload_url/);
+assert.doesNotMatch(studioSource, /fetch\(video\.upload_url/);
+assert.match(studioSource, /Пост не создан и не поставлен в очередь/);
+assert.match(studioSource, /Вложения прикреплены/);
+assert.match(studioSource, /failed to fetch\|load failed\|networkerror/);
 
 console.log('Owner studio checks passed: authentication, VK Mini App connection, media uploads and scheduling');

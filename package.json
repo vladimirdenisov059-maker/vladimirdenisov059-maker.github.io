@@ -12,7 +12,8 @@
     "preview:cloudflare": "wrangler pages dev cloudflare-api-public --port 8788",
     "test:generator": "node --experimental-strip-types tests/generate-post.mjs",
     "test:owner": "node --experimental-strip-types tests/owner-studio.mjs",
-    "test": "npm run test:generator && npm run test:owner"
+    "test": "npm run test:generator && npm run test:owner && npm run test:history",
+    "test:history": "node --experimental-strip-types tests/publication-history.mjs"
   },
   "dependencies": {
     "@astrojs/rss": "latest",
