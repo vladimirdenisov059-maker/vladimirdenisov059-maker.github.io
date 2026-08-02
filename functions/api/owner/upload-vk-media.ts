@@ -49,7 +49,13 @@ const safeUploadUrl = (value: string | undefined) => {
     const hostname = url.hostname.toLowerCase();
     const isVkUploadHost = hostname === 'vk.com'
       || hostname.endsWith('.vk.com')
+      || hostname === 'vk.ru'
+      || hostname.endsWith('.vk.ru')
       || hostname.endsWith('.vkuser.net')
+      || hostname === 'userapi.com'
+      || hostname.endsWith('.userapi.com')
+      || hostname === 'vkuserphoto.ru'
+      || hostname.endsWith('.vkuserphoto.ru')
       || hostname.endsWith('.vk-cdn.net');
     return url.protocol === 'https:' && isVkUploadHost ? url : null;
   } catch {

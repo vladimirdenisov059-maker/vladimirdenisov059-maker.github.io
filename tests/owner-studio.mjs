@@ -83,9 +83,9 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ response: [{ id: Number(ownerId), first_name: 'Владимир', last_name: 'Денисов', screen_name: 'dionis1959' }] });
   }
   if (target.includes('/method/photos.getWallUploadServer')) {
-    return Response.json({ response: { upload_url: 'https://pu.vk.com/test-photo-upload' } });
+    return Response.json({ response: { upload_url: 'https://pu.vk.ru/test-photo-upload' } });
   }
-  if (target === 'https://pu.vk.com/test-photo-upload') {
+  if (target === 'https://pu.vk.ru/test-photo-upload') {
     photoUploadWasStreamed = Boolean(options.body);
     return Response.json({ server: 7, photo: '[{"photo":"payload"}]', hash: 'photo-hash' });
   }
@@ -93,9 +93,9 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ response: [{ owner_id: Number(ownerId), id: 77 }] });
   }
   if (target.includes('/method/video.save')) {
-    return Response.json({ response: { upload_url: 'https://pu.vk.com/test-video-upload', owner_id: Number(ownerId), video_id: 88 } });
+    return Response.json({ response: { upload_url: 'https://pu.vk.ru/test-video-upload', owner_id: Number(ownerId), video_id: 88 } });
   }
-  if (target === 'https://pu.vk.com/test-video-upload') {
+  if (target === 'https://pu.vk.ru/test-video-upload') {
     videoUploadWasStreamed = Boolean(options.body);
     return Response.json({ size: 1024, owner_id: Number(ownerId), video_id: 88 });
   }
@@ -151,7 +151,7 @@ assert.equal(videoResponse.status, 200);
 assert.equal(videoBody.attachment, 'video12345_88');
 assert.equal(videoUploadWasStreamed, true);
 const bridgeVideoResponse = await uploadVkMedia({
-  request: makeMediaRequest('video', video, 'https://pu.vk.com/test-video-upload'),
+  request: makeMediaRequest('video', video, 'https://pu.vk.ru/test-video-upload'),
   env: { ADMIN_PASSWORD: password },
 });
 const bridgeVideoBody = await bridgeVideoResponse.json();
