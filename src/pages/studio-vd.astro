@@ -484,7 +484,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       let attachment: string;
       try {
         const body = new FormData();
-        body.append(kind === 'photo' ? 'photo' : 'video_file', item.file, item.file.name);
+        const extension = item.file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'photo' ? 'jpg' : 'mp4');
+        body.append(kind === 'photo' ? 'photo' : 'video_file', item.file, `garden-${kind}.${extension}`);
         const response = await fetch(`${form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media'}?kind=${kind}`, {
           method: 'POST',
           headers: {

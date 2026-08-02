@@ -152,8 +152,11 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     const uploadUrl = safeUploadUrl(video.upload_url);
     if (!uploadUrl || !video.video_id || !video.owner_id || video.owner_id !== ownerId) throw new Error('VIDEO_SAVE_FAILED');
     const uploaded = await uploadBody(request, uploadUrl);
-    if (!uploaded.ok) throw new Error('VIDEO_UPLOAD_FAILED');
-    await uploaded.text();
+    const uploadReply = await uploaded.text();
+    if (!uploaded.ok) {
+      console.error('VK video upload server rejected file', uploaded.status, uploadReply.slice(0, 500));
+      throw Object.assign(new Error('VIDEO_UPLOAD_FAILED'), { upstreamStatus: uploaded.status });
+    }
     return respond({
       uploaded: true,
       kind,
@@ -161,9 +164,12 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     });
   } catch (error) {
     const code = vkErrorCode(error);
+    const upstreamStatus = error && typeof error === 'object' && 'upstreamStatus' in error
+      ? Number((error as { upstreamStatus?: unknown }).upstreamStatus)
+      : null;
     console.error('VK media upload failed', kind, code ?? error);
     return respond({
-      error: `ВКонтакте не принял ${kind === 'photo' ? 'фотографию' : 'видео'}${code ? ` (код ${code})` : ''}.`,
+      error: `ВКонтакте не принял ${kind === 'photo' ? 'фотографию' : 'видео'}${code ? ` (код ${code})` : ''}${upstreamStatus ? `: сервер загрузки ответил HTTP ${upstreamStatus}` : ''}.`,
     }, 502);
   }
 };

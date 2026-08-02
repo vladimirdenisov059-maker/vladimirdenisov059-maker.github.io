@@ -198,7 +198,9 @@ assert.doesNotMatch(studioSource, /fetch\(video\.upload_url/);
 assert.match(studioSource, /Пост не создан и не поставлен в очередь/);
 assert.match(studioSource, /Вложения прикреплены/);
 assert.match(studioSource, /failed to fetch\|load failed\|networkerror/);
+assert.match(studioSource, /garden-\$\{kind\}\.\$\{extension\}/);
 assert.match(uploadSource, /FixedLengthStream/);
 assert.match(uploadSource, /Content-Length/);
+assert.match(uploadSource, /сервер загрузки ответил HTTP/);
 
 console.log('Owner studio checks passed: authentication, VK Mini App connection, media uploads and scheduling');
