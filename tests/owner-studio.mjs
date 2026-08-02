@@ -72,6 +72,7 @@ let capturedPrompt = '';
 let capturedWallParams;
 let photoUploadWasStreamed = false;
 let videoUploadWasStreamed = false;
+let malformedPhotoUpload = false;
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   if (target.includes('proxyapi.ru')) {
@@ -87,7 +88,8 @@ globalThis.fetch = async (url, options = {}) => {
   }
   if (target === 'https://pu.vk.ru/test-photo-upload') {
     photoUploadWasStreamed = Boolean(options.body);
-    return Response.json({ server: 7, photo: '[{"photo":"payload"}]', hash: 'photo-hash' });
+    if (malformedPhotoUpload) return Response.json({ request_id: 'test-request' });
+    return Response.json({ response: { server: '7', photos_list: [{ photo: 'payload' }], hash: 'photo-hash' } });
   }
   if (target.includes('/method/photos.saveWallPhoto')) {
     return Response.json({ response: [{ owner_id: Number(ownerId), id: 77 }] });
@@ -143,6 +145,28 @@ const photoBody = await photoResponse.json();
 assert.equal(photoResponse.status, 200);
 assert.equal(photoBody.attachment, 'photo12345_77');
 assert.equal(photoUploadWasStreamed, true);
+
+const bridgePhotoResponse = await uploadVkMedia({
+  request: makeMediaRequest('photo', photo, 'https://pu.vk.ru/test-photo-upload'),
+  env: { ADMIN_PASSWORD: password },
+});
+const bridgePhotoBody = await bridgePhotoResponse.json();
+assert.equal(bridgePhotoResponse.status, 200);
+assert.deepEqual(bridgePhotoBody.uploadResult, {
+  server: 7,
+  photo: '[{"photo":"payload"}]',
+  hash: 'photo-hash',
+});
+
+malformedPhotoUpload = true;
+const malformedBridgePhotoResponse = await uploadVkMedia({
+  request: makeMediaRequest('photo', photo, 'https://pu.vk.ru/test-photo-upload'),
+  env: { ADMIN_PASSWORD: password },
+});
+malformedPhotoUpload = false;
+const malformedBridgePhotoBody = await malformedBridgePhotoResponse.json();
+assert.equal(malformedBridgePhotoResponse.status, 502);
+assert.match(malformedBridgePhotoBody.error, /поля ответа: request_id/);
 
 const video = new File([new Uint8Array([1, 2, 3, 4])], 'garden.mp4', { type: 'video/mp4' });
 const videoResponse = await uploadVkMedia({ request: makeMediaRequest('video', video), env });
@@ -212,6 +236,8 @@ assert.match(studioSource, /VKWebAppGetAuthToken/);
 assert.match(studioSource, /X-VK-Access-Token/);
 assert.match(studioSource, /X-VK-Upload-URL/);
 assert.match(studioSource, /photos\.saveWallPhoto/);
+assert.match(studioSource, /preparePhotoForVk/);
+assert.match(studioSource, /createImageBitmap/);
 assert.match(studioSource, /video\.save/);
 assert.doesNotMatch(studioSource, /fetch\(server\.upload_url/);
 assert.doesNotMatch(studioSource, /fetch\(video\.upload_url/);

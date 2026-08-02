@@ -20,9 +20,9 @@ interface UploadServer {
 }
 
 interface PhotoUploadResult {
-  server?: number;
-  photo?: string;
-  hash?: string;
+  server: number;
+  photo: string;
+  hash: string;
 }
 
 interface SavedPhoto {
@@ -68,6 +68,51 @@ const safeUploadUrl = (value: string | undefined) => {
   }
 };
 
+const asRecord = (value: unknown): Record<string, unknown> | null => (
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+);
+
+const normalizePhotoUploadResult = (value: unknown): PhotoUploadResult | null => {
+  const root = asRecord(value);
+  const candidates = [root, asRecord(root?.response), asRecord(root?.data)].filter(
+    (candidate): candidate is Record<string, unknown> => Boolean(candidate),
+  );
+
+  for (const candidate of candidates) {
+    const rawServer = candidate.server;
+    const server = typeof rawServer === 'number'
+      ? rawServer
+      : typeof rawServer === 'string' && rawServer.trim()
+        ? Number(rawServer)
+        : Number.NaN;
+    const hash = typeof candidate.hash === 'string' ? candidate.hash.trim() : '';
+    let photo = typeof candidate.photo === 'string' ? candidate.photo.trim() : '';
+    if (!photo && candidate.photos_list !== undefined) {
+      if (typeof candidate.photos_list === 'string') {
+        photo = candidate.photos_list.trim();
+      } else {
+        try { photo = JSON.stringify(candidate.photos_list); } catch { photo = ''; }
+      }
+    }
+    if (Number.isFinite(server) && hash && photo && photo !== '[]' && photo !== '{}') {
+      return { server, photo, hash };
+    }
+  }
+  return null;
+};
+
+const uploadResponseFields = (value: unknown) => {
+  const root = asRecord(value);
+  const records = [root, asRecord(root?.response), asRecord(root?.data)].filter(
+    (record): record is Record<string, unknown> => Boolean(record),
+  );
+  const fields = [...new Set(records.flatMap((record) => Object.keys(record)))]
+    .filter((field) => /^[a-z0-9_]+$/i.test(field))
+    .slice(0, 12);
+  return fields.join(', ') || 'нет';
+};
 const uploadBody = async (request: Request, uploadUrl: URL) => {
   const contentType = request.headers.get('Content-Type') ?? '';
   if (!contentType.toLowerCase().startsWith('multipart/form-data;')) throw new Error('INVALID_MULTIPART');
@@ -141,15 +186,28 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
         console.error('VK bridge upload server rejected file', kind, uploaded.status, uploadReply.slice(0, 500));
         return respond({ error: `Сервер загрузки ВКонтакте ответил HTTP ${uploaded.status}.` }, 502);
       }
-      let uploadResult: Record<string, unknown> = {};
+      let parsedUploadResult: unknown = {};
       if (uploadReply.trim()) {
         try {
-          uploadResult = JSON.parse(uploadReply) as Record<string, unknown>;
+          parsedUploadResult = JSON.parse(uploadReply) as unknown;
         } catch {
           return respond({ error: 'Сервер загрузки ВКонтакте вернул непонятный ответ.' }, 502);
         }
       }
-      if ('error' in uploadResult) return respond({ error: 'ВКонтакте отклонил загружаемый файл.' }, 502);
+      const parsedRecord = asRecord(parsedUploadResult);
+      if (parsedRecord && ('error' in parsedRecord || 'error_code' in parsedRecord)) {
+        return respond({ error: 'ВКонтакте отклонил загружаемый файл.' }, 502);
+      }
+      if (kind === 'photo') {
+        const uploadResult = normalizePhotoUploadResult(parsedUploadResult);
+        if (!uploadResult) {
+          return respond({
+            error: 'Сервер ВКонтакте принял файл, но не вернул данные для сохранения фотографии (поля ответа: ' + uploadResponseFields(parsedUploadResult) + ').',
+          }, 502);
+        }
+        return respond({ uploaded: true, kind, uploadResult });
+      }
+      const uploadResult = parsedRecord ?? {};
       return respond({ uploaded: true, kind, uploadResult });
     } catch (error) {
       console.error('VK bridge media proxy failed', kind, error);
@@ -171,8 +229,9 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
       const uploadUrl = safeUploadUrl(server.upload_url);
       if (!uploadUrl) throw new Error('INVALID_UPLOAD_URL');
       const uploaded = await uploadBody(request, uploadUrl);
-      const uploadResult = await uploaded.json() as PhotoUploadResult;
-      if (!uploaded.ok || !uploadResult.photo || !uploadResult.hash || uploadResult.server === undefined) {
+      const rawUploadResult = await uploaded.json() as unknown;
+      const uploadResult = normalizePhotoUploadResult(rawUploadResult);
+      if (!uploaded.ok || !uploadResult) {
         throw new Error('PHOTO_UPLOAD_FAILED');
       }
       const saved = await callVk<SavedPhoto[]>(env, 'photos.saveWallPhoto', new URLSearchParams({
