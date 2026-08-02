@@ -95,7 +95,7 @@ globalThis.fetch = async (url, options = {}) => {
   if (target.includes('/method/video.save')) {
     return Response.json({ response: { upload_url: 'https://pu.vk.ru/test-video-upload', owner_id: Number(ownerId), video_id: 88 } });
   }
-  if (target === 'https://pu.vk.ru/test-video-upload') {
+  if (target === 'https://pu.vk.ru/test-video-upload' || target === 'https://upload.vkvideo.ru/test-video-upload') {
     videoUploadWasStreamed = Boolean(options.body);
     return Response.json({ size: 1024, owner_id: Number(ownerId), video_id: 88 });
   }
@@ -151,7 +151,7 @@ assert.equal(videoResponse.status, 200);
 assert.equal(videoBody.attachment, 'video12345_88');
 assert.equal(videoUploadWasStreamed, true);
 const bridgeVideoResponse = await uploadVkMedia({
-  request: makeMediaRequest('video', video, 'https://pu.vk.ru/test-video-upload'),
+  request: makeMediaRequest('video', video, 'https://upload.vkvideo.ru/test-video-upload'),
   env: { ADMIN_PASSWORD: password },
 });
 const bridgeVideoBody = await bridgeVideoResponse.json();

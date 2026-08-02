@@ -56,6 +56,10 @@ const safeUploadUrl = (value: string | undefined) => {
       || hostname.endsWith('.userapi.com')
       || hostname === 'vkuserphoto.ru'
       || hostname.endsWith('.vkuserphoto.ru')
+      || hostname === 'vkvideo.ru'
+      || hostname.endsWith('.vkvideo.ru')
+      || hostname === 'vkontakte.ru'
+      || hostname.endsWith('.vkontakte.ru')
       || hostname.endsWith('.vk-cdn.net');
     return url.protocol === 'https:' && isVkUploadHost ? url : null;
   } catch {
@@ -124,7 +128,11 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   const bridgeUploadUrl = request.headers.get('X-VK-Upload-URL');
   if (bridgeUploadUrl) {
     const uploadUrl = safeUploadUrl(bridgeUploadUrl);
-    if (!uploadUrl) return respond({ error: 'ВКонтакте вернул недопустимый адрес загрузки.' }, 400);
+    if (!uploadUrl) {
+      let hostname = 'неизвестен';
+      try { hostname = new URL(bridgeUploadUrl).hostname; } catch { /* Keep the safe fallback. */ }
+      return respond({ error: `ВКонтакте вернул недопустимый адрес загрузки (домен: ${hostname}).` }, 400);
+    }
     try {
       const uploaded = await uploadBody(request, uploadUrl);
       const uploadReply = await uploaded.text();
