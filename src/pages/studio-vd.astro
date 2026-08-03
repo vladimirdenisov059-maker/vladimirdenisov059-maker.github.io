@@ -356,21 +356,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     }
   };
 
-  const copyVkSetupToClipboard = async (payload: string) => {
-    try {
-      await bridge.send('VKWebAppCopyText', { text: payload });
-      return true;
-    } catch {
-      return copyTextWithFallback(payload);
-    }
-  };
-
   const obtainVkSetup = async (password: string) => {
     if (!vkBridgeReady || !form?.dataset.statusEndpoint) throw new Error('Мини-приложение VK ещё не готово.');
-    const statusResponse = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
-    const statusData = await statusResponse.json() as { error?: string };
-    const expectedMissingToken = statusResponse.status === 503 && /VK_ACCESS_TOKEN/.test(statusData.error ?? '');
-    if (!statusResponse.ok && !expectedMissingToken) throw new Error(statusData.error || 'Не удалось проверить пароль редактора.');
 
     const token = await bridge.send('VKWebAppGetAuthToken', {
       app_id: VK_APP_ID,
@@ -383,15 +370,26 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     });
     const user = (users.response as Array<{ id?: number }>)[0];
     if (!user?.id) throw new Error('VK не вернул ID страницы владельца.');
-    const payload = JSON.stringify({
-      kind: 'gardens-vk-setup',
-      accessToken: token.access_token,
-      ownerId: user.id,
-      expires: token.expires ?? null,
-      scope: token.scope,
+
+    const connectEndpoint = new URL('/api/owner/connect-vk', form.dataset.statusEndpoint).toString();
+    const response = await fetch(connectEndpoint, {
+      method: 'POST',
+      headers: ownerHeaders(password, true),
+      body: JSON.stringify({
+        accessToken: token.access_token,
+        ownerId: user.id,
+        expires: token.expires ?? null,
+        scope: token.scope,
+      }),
     });
-    if (!(await copyVkSetupToClipboard(payload))) throw new Error('Не удалось скопировать данные настройки.');
-    setStatus(vkState, 'Доступ VK получен и безопасно скопирован. Вернитесь в Codex и напишите: «скопировал».');
+    const data = await response.json() as { connected?: boolean; error?: string };
+    if (!response.ok || !data.connected) {
+      throw new Error(data.error || 'Не удалось сохранить доступ VK на сервере сайта.');
+    }
+
+    setStatus(vkState, 'Доступ VK зашифрован и сохранён. Проверяем автоматическую публикацию…');
+    await checkVkConnection(password);
+    if (!vkConfigured) throw new Error('Доступ сохранён, но VK отклонил серверную проверку. Сообщите Codex текст ошибки на экране.');
   };
 
   vkConnectButton?.addEventListener('click', async () => {

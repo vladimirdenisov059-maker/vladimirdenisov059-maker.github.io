@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { onRequest as publicationHistory } from '../functions/api/owner/publication-history.ts';
+import { onRequest as connectVk } from '../functions/api/owner/connect-vk.ts';
+import { loadVkCredentials } from '../functions/_shared/vk.ts';
 
 const origin = 'https://vladimirdenisov059-maker.github.io';
 const password = 'strong-owner-password-for-tests';
@@ -17,6 +19,41 @@ const request = (body, authorization = `Bearer ${password}`) => new Request(
     body: JSON.stringify(body),
   },
 );
+
+
+const connectRequest = (body, authorization = `Bearer ${password}`) => new Request(
+  'https://gardens-of-donbas-api.pages.dev/api/owner/connect-vk',
+  {
+    method: 'POST',
+    headers: { Origin: origin, Authorization: authorization, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  },
+);
+const vkCredentials = {
+  accessToken: 'vk-test-token-long-enough-for-storage',
+  ownerId: 325757497,
+  scope: 'wall,photos,video',
+  expires: null,
+};
+const deniedConnection = await connectVk({
+  request: connectRequest(vkCredentials, 'Bearer wrong-password'),
+  env,
+});
+assert.equal(deniedConnection.status, 401);
+
+const incompleteConnection = await connectVk({
+  request: connectRequest({ ...vkCredentials, scope: 'wall,photos' }),
+  env,
+});
+assert.equal(incompleteConnection.status, 400);
+
+const connected = await connectVk({ request: connectRequest(vkCredentials), env });
+assert.equal(connected.status, 200);
+assert.equal((await connected.json()).connected, true);
+const encryptedCredentials = values.get('owner-configuration:vk:v1');
+assert.ok(encryptedCredentials);
+assert.doesNotMatch(encryptedCredentials, /vk-test-token/);
+assert.deepEqual(await loadVkCredentials(env), vkCredentials);
 
 const denied = await publicationHistory({ request: request({ action: 'list' }, 'Bearer wrong-password'), env });
 assert.equal(denied.status, 401);
