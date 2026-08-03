@@ -99,7 +99,8 @@ const normalizePhotoUploadResult = (value: unknown): PhotoUploadResult | null =>
         try { photo = JSON.stringify(candidate.photos_list); } catch { photo = ''; }
       }
     }
-    if (Number.isFinite(server) && hash && photo && photo !== '[]' && photo !== '{}') {
+    const looksLikeEncodedPhotoList = photo.length > 2 && photo.startsWith('[') && photo.endsWith(']');
+    if (Number.isFinite(server) && hash && looksLikeEncodedPhotoList) {
       return { server, photo, hash };
     }
   }
@@ -235,7 +236,9 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
       const rawUploadResult = await uploaded.json() as unknown;
       const uploadResult = normalizePhotoUploadResult(rawUploadResult);
       if (!uploaded.ok || !uploadResult) {
-        throw new Error('PHOTO_UPLOAD_FAILED');
+        const diagnostic = `HTTP ${uploaded.status}; поля: ${uploadResponseFields(rawUploadResult)}; сырой ответ: ${JSON.stringify(rawUploadResult).slice(0, 200)}`;
+        console.error('VK wall photo upload server returned unusable payload', diagnostic);
+        throw Object.assign(new Error('PHOTO_UPLOAD_FAILED'), { diagnostic });
       }
       let saved: SavedPhoto[];
       try {
@@ -246,7 +249,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
           hash: uploadResult.hash,
         }), accessToken);
       } catch (error) {
-        const diagnostic = `поля ответа сервера загрузки: ${uploadResponseFields(rawUploadResult)}, длина photo: ${uploadResult.photo.length}`;
+        const diagnostic = `поля: ${uploadResponseFields(rawUploadResult)}; server=${uploadResult.server}; hash.length=${uploadResult.hash.length}; photo=${JSON.stringify(uploadResult.photo).slice(0, 160)}`;
         console.error('VK photos.saveWallPhoto rejected upload result', vkErrorCode(error), diagnostic);
         throw Object.assign(error instanceof Error ? error : new Error(String(error)), { diagnostic });
       }
