@@ -237,12 +237,19 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
       if (!uploaded.ok || !uploadResult) {
         throw new Error('PHOTO_UPLOAD_FAILED');
       }
-      const saved = await callVk<SavedPhoto[]>(env, 'photos.saveWallPhoto', new URLSearchParams({
-        user_id: String(ownerId),
-        photo: uploadResult.photo,
-        server: String(uploadResult.server),
-        hash: uploadResult.hash,
-      }), accessToken);
+      let saved: SavedPhoto[];
+      try {
+        saved = await callVk<SavedPhoto[]>(env, 'photos.saveWallPhoto', new URLSearchParams({
+          user_id: String(ownerId),
+          photo: uploadResult.photo,
+          server: String(uploadResult.server),
+          hash: uploadResult.hash,
+        }), accessToken);
+      } catch (error) {
+        const diagnostic = `поля ответа сервера загрузки: ${uploadResponseFields(rawUploadResult)}, длина photo: ${uploadResult.photo.length}`;
+        console.error('VK photos.saveWallPhoto rejected upload result', vkErrorCode(error), diagnostic);
+        throw Object.assign(error instanceof Error ? error : new Error(String(error)), { diagnostic });
+      }
       const photo = saved[0];
       if (!photo?.id || !photo.owner_id || photo.owner_id !== ownerId) throw new Error('PHOTO_SAVE_FAILED');
       return respond({
@@ -275,9 +282,12 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     const upstreamStatus = error && typeof error === 'object' && 'upstreamStatus' in error
       ? Number((error as { upstreamStatus?: unknown }).upstreamStatus)
       : null;
+    const diagnostic = error && typeof error === 'object' && 'diagnostic' in error
+      ? String((error as { diagnostic?: unknown }).diagnostic)
+      : null;
     console.error('VK media upload failed', kind, code ?? error);
     return respond({
-      error: `ВКонтакте не принял ${kind === 'photo' ? 'фотографию' : 'видео'}${code ? ` (код ${code})` : ''}${upstreamStatus ? `: сервер загрузки ответил HTTP ${upstreamStatus}` : ''}.`,
+      error: `ВКонтакте не принял ${kind === 'photo' ? 'фотографию' : 'видео'}${code ? ` (код ${code})` : ''}${upstreamStatus ? `: сервер загрузки ответил HTTP ${upstreamStatus}` : ''}${diagnostic ? ` (${diagnostic})` : ''}.`,
     }, 502);
   }
 };
