@@ -551,7 +551,14 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       const body = new FormData();
       body.append(kind === 'photo' ? 'photo' : 'video_file', uploadFile, 'garden-' + kind + '.' + extension);
       try {
-        response = await fetch(endpoint, { method: 'POST', headers, body });
+        const candidate = await fetch(endpoint, { method: 'POST', headers, body });
+        if (candidate.status >= 500 && attempt < 4) {
+          await candidate.text().catch(() => '');
+          setStatus(mediaStatus, 'Сервер загрузки VK временно не ответил. Повторяем файл ' + (index + 1) + ' автоматически (' + (attempt + 1) + ' из 4)…');
+          await new Promise((resolve) => window.setTimeout(resolve, attempt * 1400));
+          continue;
+        }
+        response = candidate;
         break;
       } catch (error) {
         networkError = error;
@@ -587,7 +594,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       throw new Error('Не удалось прочитать фотографию. Откройте её на компьютере и сохраните заново в формате JPG.');
     }
     try {
-      const maxSide = 6000;
+      const maxSide = 2560;
       const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
       const width = Math.max(1, Math.round(bitmap.width * scale));
       const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -600,7 +607,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       context.fillRect(0, 0, width, height);
       context.drawImage(bitmap, 0, 0, width, height);
       const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Не удалось преобразовать фотографию в JPG.')), 'image/jpeg', 0.92);
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Не удалось преобразовать фотографию в JPG.')), 'image/jpeg', 0.88);
       });
       return new File([blob], 'garden-photo.jpg', { type: 'image/jpeg', lastModified: file.lastModified });
     } finally {
@@ -639,7 +646,19 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
               }
               if (!photoUploadUrl) throw new Error('VK не вернул адрес загрузки фотографии.');
 
-              const uploaded = await proxyVkUpload(kind, uploadFile, item.file.name, password, index, photoUploadUrl);
+              let uploaded: Awaited<ReturnType<typeof proxyVkUpload>>;
+              try {
+                uploaded = await proxyVkUpload(kind, uploadFile, item.file.name, password, index, photoUploadUrl);
+              } catch (error) {
+                lastPhotoError = error;
+                const message = error instanceof Error ? error.message : String(error);
+                if (photoAttempt < 3 && /HTTP 5\d\d|ошибк[ау] 5\d\d/i.test(message)) {
+                  photoUploadUrl = null;
+                  setStatus(mediaStatus, 'Сервер фотографии VK недоступен. Получаем другой адрес и повторяем загрузку…');
+                  continue;
+                }
+                throw error;
+              }
               const uploadResult = uploaded.uploadResult;
               if (!uploadResult?.photo || !uploadResult.hash || !Number.isFinite(Number(uploadResult.server))) {
                 throw new Error('VK принял файл, но не вернул данные для сохранения фотографии.');
