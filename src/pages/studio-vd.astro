@@ -500,7 +500,9 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       .find((value) => typeof value === 'string' && value.trim());
     if (errorCode !== undefined || errorText) {
       const codeText = errorCode !== undefined ? ` (код ${String(errorCode)})` : '';
-      const detail = typeof errorText === 'string' ? `: ${errorText.trim()}` : '';
+      const rawDetail = typeof errorText === 'string' ? errorText.trim() : '';
+      const localizedDetail = /^unknown error$/i.test(rawDetail) ? 'неизвестная ошибка ВКонтакте' : rawDetail;
+      const detail = localizedDetail ? `: ${localizedDetail}` : '';
       return `ВКонтакте отклонил запрос${codeText}${detail}`;
     }
     const message = error instanceof Error ? error.message.trim() : '';
