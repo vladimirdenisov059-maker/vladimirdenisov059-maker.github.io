@@ -609,6 +609,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   };
   const uploadMedia = async (password: string) => {
     const attachments: string[] = [];
+    let photoUploadUrl: string | null = null;
     for (let index = 0; index < mediaItems.length; index += 1) {
       const item = mediaItems[index];
       const cached = uploadedAttachments.get(item.id);
@@ -620,25 +621,60 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         const uploadFile = kind === 'photo' ? await preparePhotoForVk(item.file) : item.file;
         if (isVkMiniApp && vkAccessToken && vkOwnerId) {
           if (kind === 'photo') {
-            const server = await callVkBridge<{ upload_url?: string }>('photos.getWallUploadServer');
-            if (!server.upload_url) throw new Error('VK не вернул адрес загрузки фотографии.');
-            const uploaded = await proxyVkUpload(kind, uploadFile, item.file.name, password, index, server.upload_url);
-            const uploadResult = uploaded.uploadResult;
-            if (!uploadResult?.photo || !uploadResult.hash || !Number.isFinite(Number(uploadResult.server))) {
-              throw new Error('VK принял файл, но не вернул данные для сохранения фотографии.');
+            let savedAttachment: string | null = null;
+            let lastPhotoError: unknown = null;
+            for (let photoAttempt = 1; photoAttempt <= 3 && !savedAttachment; photoAttempt += 1) {
+              if (!photoUploadUrl) {
+                let fallbackUploadUrl: string | null = null;
+                for (let serverAttempt = 1; serverAttempt <= 3; serverAttempt += 1) {
+                  const server = await callVkBridge<{ upload_url?: string }>(
+                    'photos.getWallUploadServer',
+                    { user_id: vkOwnerId },
+                  );
+                  if (!server.upload_url) continue;
+                  fallbackUploadUrl = server.upload_url;
+                  if (!/\/v2\/bulk_upload/i.test(server.upload_url)) break;
+                }
+                photoUploadUrl = fallbackUploadUrl;
+              }
+              if (!photoUploadUrl) throw new Error('VK не вернул адрес загрузки фотографии.');
+
+              const uploaded = await proxyVkUpload(kind, uploadFile, item.file.name, password, index, photoUploadUrl);
+              const uploadResult = uploaded.uploadResult;
+              if (!uploadResult?.photo || !uploadResult.hash || !Number.isFinite(Number(uploadResult.server))) {
+                throw new Error('VK принял файл, но не вернул данные для сохранения фотографии.');
+              }
+              try {
+                const saved = await callVkBridge<Array<{ id?: number; owner_id?: number; access_key?: string }>>(
+                  'photos.saveWallPhoto',
+                  {
+                    user_id: vkOwnerId,
+                    photo: uploadResult.photo,
+                    server: Number(uploadResult.server),
+                    hash: uploadResult.hash,
+                  },
+                );
+                const photo = saved[0];
+                if (!photo?.id || !photo.owner_id) throw new Error('VK не сохранил фотографию.');
+                savedAttachment = `photo${photo.owner_id}_${photo.id}${photo.access_key ? `_${photo.access_key}` : ''}`;
+              } catch (error) {
+                lastPhotoError = error;
+                const bridgeError = error && typeof error === 'object' ? error as Record<string, unknown> : null;
+                const errorData = bridgeError?.error_data && typeof bridgeError.error_data === 'object'
+                  ? bridgeError.error_data as Record<string, unknown>
+                  : null;
+                const code = Number(errorData?.error_code ?? bridgeError?.error_code);
+                const message = String(errorData?.error_msg ?? bridgeError?.error_msg ?? '');
+                if (photoAttempt < 3 && code === 100 && /photos_list is invalid/i.test(message)) {
+                  photoUploadUrl = null;
+                  setStatus(mediaStatus, 'VK вернул несовместимый сервер фотографии. Получаем новый адрес и повторяем загрузку…');
+                  continue;
+                }
+                throw error;
+              }
             }
-            const saved = await callVkBridge<Array<{ id?: number; owner_id?: number; access_key?: string }>>(
-              'photos.saveWallPhoto',
-              {
-                user_id: vkOwnerId,
-                photo: uploadResult.photo,
-                server: Number(uploadResult.server),
-                hash: uploadResult.hash,
-              },
-            );
-            const photo = saved[0];
-            if (!photo?.id || !photo.owner_id) throw new Error('VK не сохранил фотографию.');
-            attachment = `photo${photo.owner_id}_${photo.id}${photo.access_key ? `_${photo.access_key}` : ''}`;
+            if (!savedAttachment) throw lastPhotoError ?? new Error('VK не сохранил фотографию после повторной загрузки.');
+            attachment = savedAttachment;
           } else {
             const video = await callVkBridge<{ upload_url?: string; video_id?: number; owner_id?: number; access_key?: string }>(
               'video.save',
