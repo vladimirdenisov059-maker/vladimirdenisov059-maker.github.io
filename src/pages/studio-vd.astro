@@ -168,7 +168,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   let mediaItems: MediaItem[] = [];
   const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
-  let vkOwnerId: number | null = null;
+
   let busy = false;
   const createPublishRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   let publishRequestId = createPublishRequestId();
@@ -203,7 +203,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       document.body.appendChild(helper);
       helper.focus();
       helper.select();
-      let copied = false;
+      let copied: boolean;
       try { copied = document.execCommand('copy'); } catch { copied = false; }
       document.body.removeChild(helper);
       return copied;
@@ -318,16 +318,22 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     if (!form?.dataset.statusEndpoint) return;
     try {
       const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
-      const data = await response.json() as { configured?: boolean; ownerId?: number; name?: string; error?: string };
+      let data: { configured?: boolean; ownerId?: number; name?: string; error?: string };
+      try {
+        data = await response.json() as typeof data;
+      } catch {
+        throw new Error(`Сервис ответил HTTP ${response.status}, но без понятного текста.`);
+      }
       vkConfigured = response.ok && data.configured === true;
-      vkOwnerId = data.ownerId || null;
+
       if (vkState) vkState.textContent = vkConfigured
         ? `Подключена личная страница ВК: ${data.name || 'владелец'}. Публикация выполняется автоматически, без окон ВК.`
         : (data.error || 'ВКонтакте пока не подключён.');
-    } catch {
+    } catch (error) {
       vkConfigured = false;
-      vkOwnerId = null;
-      if (vkState) vkState.textContent = 'Не удалось проверить подключение ВК. Проверьте интернет и повторите.';
+
+      const rawDetail = error instanceof Error ? error.message : String(error);
+      if (vkState) vkState.textContent = `Не удалось проверить подключение ВК. Техническая причина: ${rawDetail || 'неизвестная ошибка сети'}.`;
     }
     updatePublishButton();
   };

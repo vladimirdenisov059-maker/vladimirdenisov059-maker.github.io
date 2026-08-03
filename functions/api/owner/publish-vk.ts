@@ -26,7 +26,10 @@ interface PublishRequest {
 
 interface VkWallPostResponse { post_id?: number }
 
-const requestIdPattern = /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
+// The studio deliberately sends a compact 16-hex id: it is short enough for
+// VK's `guid` parameter while still providing idempotency for repeat clicks.
+// Keep accepting UUID v4 values for backwards compatibility with older builds.
+const requestIdPattern = /^(?:[a-f\d]{16}|[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12})$/i;
 const attachmentPattern = /^(photo|video)\d+_\d+(?:_[\w-]+)?$/;
 const maximumScheduleSeconds = 365 * 24 * 60 * 60;
 

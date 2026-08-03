@@ -214,7 +214,7 @@ const publishResponse = await publishVk({
     attachments: ['photo12345_77', 'video12345_88'],
     publishAt,
     approved: true,
-    requestId: '123e4567-e89b-42d3-a456-426614174000',
+    requestId: '123e4567e89b42d3',
   }),
   env,
 });
@@ -226,7 +226,7 @@ assert.equal(publishBody.url, 'https://vk.com/wall12345_321');
 assert.equal(capturedWallParams.get('owner_id'), ownerId);
 assert.equal(capturedWallParams.get('attachments'), 'photo12345_77,video12345_88');
 assert.equal(capturedWallParams.get('publish_date'), String(publishAt));
-assert.equal(capturedWallParams.get('guid'), '123e4567-e89b-42d3-a456-426614174000');
+assert.equal(capturedWallParams.get('guid'), '123e4567e89b42d3');
 assert.equal(capturedWallParams.get('access_token'), 'vk-test-token');
 
 const studioSource = readFileSync(new URL('../src/pages/studio-vd.astro', import.meta.url), 'utf8');
