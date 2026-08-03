@@ -106,6 +106,13 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         </label>
         <button class="button publish-button" type="button" data-publish-button disabled>Опубликовать сейчас</button>
         <p class="studio-status" data-publish-status aria-live="polite"></p>
+        <div class="manual-publish" data-manual-publish hidden>
+          <p><strong>ВКонтакте не разрешил приложению создать запись автоматически.</strong> Вложения уже загружены в ваши фото и видео.</p>
+          <div class="button-row">
+            <button class="secondary-button" type="button" data-manual-copy>Скопировать текст поста</button>
+            <a class="secondary-button" href="https://vk.ru/dionis1959" target="_top" rel="noopener">Открыть мою страницу ВК</a>
+          </div>
+        </div>
         <p data-published-link></p>
       </section>
 
@@ -152,6 +159,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const approval = document.querySelector<HTMLInputElement>('[data-publish-approval]');
   const publishButton = document.querySelector<HTMLButtonElement>('[data-publish-button]');
   const publishStatus = document.querySelector<HTMLElement>('[data-publish-status]');
+  const manualPublish = document.querySelector<HTMLElement>('[data-manual-publish]');
+  const manualCopy = document.querySelector<HTMLButtonElement>('[data-manual-copy]');
   const vkState = document.querySelector<HTMLElement>('[data-vk-state]');
   const vkConnectButton = document.querySelector<HTMLButtonElement>('[data-vk-connect]');
   const publishedLink = document.querySelector<HTMLElement>('[data-published-link]');
@@ -192,6 +201,12 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const updateCounter = () => {
     if (characterCount) characterCount.textContent = `${draft?.value.length ?? 0} знаков`;
   };
+  manualCopy?.addEventListener('click', async () => {
+    const message = draft?.value ?? '';
+    if (!message) return;
+    await navigator.clipboard.writeText(message);
+    setStatus(publishStatus, 'Текст скопирован. Откройте свою страницу ВК и вставьте его в новую запись.');
+  });
   const updatePublishButton = () => {
     if (!publishButton) return;
     const scheduledReady = selectedMode() === 'now' || Boolean(publishDate?.value);
@@ -639,6 +654,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     const message = draft?.value.trim() ?? '';
     const password = passwordInput?.value ?? '';
     if (!approval?.checked || !vkConfigured || message.length < 100 || busy) return;
+    if (manualPublish) manualPublish.hidden = true;
     let publishAt: number | null = null;
     let confirmation = 'Опубликовать этот пост на вашей личной странице ВКонтакте прямо сейчас?';
     if (selectedMode() === 'scheduled') {
@@ -715,6 +731,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       const detail = russianError(error, fallback);
       const attachmentNote = uploadedAttachmentCount ? ` Вложения успешно загружены: ${uploadedAttachmentCount} из ${mediaItems.length}.` : '';
       setStatus(publishStatus, `${detail}${attachmentNote}`, true);
+      if (manualPublish && wallRequestStarted) manualPublish.hidden = false;
       void saveHistory({
         id: publishRequestId, platform: 'vk',
         title: plantInput?.value.trim().slice(0, 120) || 'Публикация без названия',
@@ -746,6 +763,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   .media-card img,.media-card video{display:block;width:100%;height:170px;object-fit:cover;background:#111}.media-info{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;padding:.75rem}.media-info strong{max-width:100%;overflow-wrap:anywhere}.media-info span{color:var(--muted);font-size:.82rem}.remove-media{padding:.35rem .7rem;margin-top:.25rem}
   .publish-mode{display:flex;flex-wrap:wrap;gap:.8rem 1.4rem;margin:1rem 0;padding:1rem;border:1px solid var(--line);border-radius:14px}.publish-mode legend{padding:0 .4rem;color:var(--forest);font-weight:800}.publish-mode label{display:flex!important;align-items:center;gap:.45rem;margin:0!important}
   .approval-row{display:flex!important;align-items:flex-start;gap:.75rem;padding:1rem;border:1px solid var(--line);border-radius:14px;background:var(--paper)}.approval-row input{width:1.2rem;height:1.2rem;margin-top:.2rem;flex:0 0 auto}.publish-button:disabled{cursor:not-allowed;opacity:.5;transform:none}
+  .manual-publish{margin-top:1rem;padding:1rem;border:1px solid var(--line);border-radius:14px;background:var(--paper)}.manual-publish p{margin:0}.manual-publish a{text-decoration:none;display:inline-flex;align-items:center}
 .history-list{margin-top:1rem;overflow-x:auto}.history-table{width:100%;border-collapse:collapse;font-size:.84rem}.history-table th,.history-table td{padding:.75rem .65rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.history-table th{color:var(--forest);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}.history-table td[data-history-status=published]{color:var(--forest);font-weight:800}.history-table td[data-history-status=scheduled]{color:#8a641d;font-weight:800}.history-table td[data-history-status=error]{color:var(--apple);font-weight:800}.history-empty{padding:1rem;background:var(--paper);border-radius:14px;color:var(--muted)}
   [hidden]{display:none!important}@media(max-width:720px){.field-grid{grid-template-columns:1fr}.editor-meta{flex-direction:column}.studio-step .button{width:100%}.media-grid{grid-template-columns:1fr}}
 </style>
