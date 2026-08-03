@@ -33,7 +33,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
           <div class="vk-connect-panel">
             <p data-vk-state>Введите пароль и нажмите «Проверить подключение ВК».</p>
             <button class="secondary-button" type="button" data-vk-connect>Проверить подключение ВК</button>
-            <p class="field-help">Внутри приложения VK публикация выполняется напрямую; на обычном сайте доступно ручное копирование.</p>
+            <p class="field-help">Внутри приложения VK откроется официальное окно подтверждения публикации; на обычном сайте доступно ручное копирование.</p>
           </div>
         </section>
 
@@ -388,7 +388,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     vkOwnerId = user.id;
     vkConfigured = true;
     const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || 'владелец';
-    setStatus(vkState, `Подключена личная страница VK: ${name}. Публикация выполняется внутри VK без передачи ключа внешнему серверу.`);
+    setStatus(vkState, `Подключена личная страница VK: ${name}. Публикация подтверждается в официальном окне VK без передачи ключа внешнему серверу.`);
     updatePublishButton();
   };
 
@@ -749,20 +749,19 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       wallRequestStarted = true;
       let data: { published?: boolean; scheduled?: boolean; publishAt?: number | null; url?: string; error?: string };
       if (isVkMiniApp && vkAccessToken && vkOwnerId) {
-        const params: Record<string, string | number> = {
+        const result = await bridge.send('VKWebAppShowWallPostBox', {
           owner_id: vkOwnerId,
           message,
-          guid: publishRequestId,
-        };
-        if (attachments.length) params.attachments = attachments.join(',');
-        if (publishAt !== null) params.publish_date = publishAt;
-        const result = await callVkBridge<{ post_id?: number }>('wall.post', params);
-        if (!result.post_id) throw new Error('VK не вернул номер созданной записи.');
+          ...(attachments.length ? { attachments: attachments.join(',') } : {}),
+          ...(publishAt !== null ? { publish_date: publishAt } : {}),
+        });
+        const postId = Number(result.post_id);
+        if (!Number.isSafeInteger(postId) || postId <= 0) throw new Error('VK не вернул номер созданной записи.');
         data = {
           published: true,
           scheduled: publishAt !== null,
           publishAt,
-          url: `https://vk.com/wall${vkOwnerId}_${result.post_id}`,
+          url: `https://vk.com/wall${vkOwnerId}_${postId}`,
         };
       } else {
         const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {

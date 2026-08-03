@@ -239,11 +239,12 @@ const studioSource = readFileSync(new URL('../src/pages/studio-vd.astro', import
 const uploadSource = readFileSync(new URL('../functions/api/owner/upload-vk-media.ts', import.meta.url), 'utf8');
 assert.match(studioSource, /VKWebAppInit/);
 assert.match(studioSource, /VKWebAppGetAuthToken/);
-assert.doesNotMatch(studioSource, /VKWebAppShowWallPostBox/);
+assert.match(studioSource, /VKWebAppShowWallPostBox/);
+assert.match(studioSource, /publish_date/);
 assert.match(studioSource, /@vkontakte\/vk-bridge/);
 assert.match(studioSource, /callVkBridge/);
 assert.doesNotMatch(studioSource, /gardens-vk-setup/);
-assert.match(studioSource, /wall.post/);
+assert.doesNotMatch(studioSource, /wall.post/);
 assert.match(studioSource, /X-VK-Upload-URL/);
 assert.ok(studioSource.includes('bulk_upload'));
 assert.match(studioSource, /photos_list is invalid/);
