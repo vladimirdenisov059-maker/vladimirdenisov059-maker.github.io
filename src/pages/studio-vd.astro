@@ -129,6 +129,11 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
 </BaseLayout>
 
 <script>
+  import bridge from '@vkontakte/vk-bridge';
+
+  const VK_APP_ID = 54704308;
+  const vkLaunchParams = new URLSearchParams(window.location.search);
+  const isVkMiniApp = vkLaunchParams.has('vk_app_id') || vkLaunchParams.has('vk_user_id') || vkLaunchParams.has('vk_platform');
   const form = document.querySelector<HTMLFormElement>('[data-owner-form]');
   const passwordInput = document.querySelector<HTMLInputElement>('#owner-password');
   const plantInput = document.querySelector<HTMLInputElement>('#owner-plant');
@@ -168,6 +173,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   let mediaItems: MediaItem[] = [];
   const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
+  let vkBridgeReady = false;
 
   let busy = false;
   const createPublishRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
@@ -338,17 +344,72 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     updatePublishButton();
   };
 
+  const initializeVkMiniApp = async () => {
+    if (!isVkMiniApp) return;
+    try {
+      await bridge.send('VKWebAppInit');
+      vkBridgeReady = true;
+      if (vkConnectButton) vkConnectButton.textContent = 'Выдать доступ VK для сайта';
+      setStatus(vkState, 'Мини-приложение готово. Введите пароль редактора и нажмите кнопку, чтобы один раз выдать серверу права VK.');
+    } catch {
+      setStatus(vkState, 'Не удалось запустить подключение внутри VK. Закройте приложение и откройте его повторно.', true);
+    }
+  };
+
+  const copyVkSetupToClipboard = async (payload: string) => {
+    try {
+      await bridge.send('VKWebAppCopyText', { text: payload });
+      return true;
+    } catch {
+      return copyTextWithFallback(payload);
+    }
+  };
+
+  const obtainVkSetup = async (password: string) => {
+    if (!vkBridgeReady || !form?.dataset.statusEndpoint) throw new Error('Мини-приложение VK ещё не готово.');
+    const statusResponse = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
+    const statusData = await statusResponse.json() as { error?: string };
+    const expectedMissingToken = statusResponse.status === 503 && /VK_ACCESS_TOKEN/.test(statusData.error ?? '');
+    if (!statusResponse.ok && !expectedMissingToken) throw new Error(statusData.error || 'Не удалось проверить пароль редактора.');
+
+    const token = await bridge.send('VKWebAppGetAuthToken', {
+      app_id: VK_APP_ID,
+      scope: 'wall,photos,video',
+    });
+    if (!token.access_token) throw new Error('VK не выдал ключ доступа.');
+    const users = await bridge.send('VKWebAppCallAPIMethod', {
+      method: 'users.get',
+      params: { access_token: token.access_token, v: '5.199' },
+    });
+    const user = (users.response as Array<{ id?: number }>)[0];
+    if (!user?.id) throw new Error('VK не вернул ID страницы владельца.');
+    const payload = JSON.stringify({
+      kind: 'gardens-vk-setup',
+      accessToken: token.access_token,
+      ownerId: user.id,
+      expires: token.expires ?? null,
+      scope: token.scope,
+    });
+    if (!(await copyVkSetupToClipboard(payload))) throw new Error('Не удалось скопировать данные настройки.');
+    setStatus(vkState, 'Доступ VK получен и безопасно скопирован. Вернитесь в Codex и напишите: «скопировал».');
+  };
+
   vkConnectButton?.addEventListener('click', async () => {
     const password = passwordInput?.value ?? '';
     if (password.length < 12) return setStatus(vkState, 'Сначала введите пароль владельца.', true);
     vkConnectButton.disabled = true;
-    setStatus(vkState, 'Проверяем подключение ВКонтакте…');
+    setStatus(vkState, isVkMiniApp ? 'VK запрашивает права на стену, фотографии и видео…' : 'Проверяем подключение ВКонтакте…');
     try {
-      await checkVkConnection(password);
+      if (isVkMiniApp) await obtainVkSetup(password);
+      else await checkVkConnection(password);
+    } catch (error) {
+      setStatus(vkState, error instanceof Error ? error.message : 'Не удалось получить доступ VK.', true);
     } finally {
       vkConnectButton.disabled = false;
     }
   });
+
+  void initializeVkMiniApp();
 
   draft?.addEventListener('input', () => { updateCounter(); resetApproval(); });
   approval?.addEventListener('change', updatePublishButton);

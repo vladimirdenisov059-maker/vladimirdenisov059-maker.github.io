@@ -237,10 +237,12 @@ assert.equal(capturedWallParams.get('access_token'), 'vk-test-token');
 
 const studioSource = readFileSync(new URL('../src/pages/studio-vd.astro', import.meta.url), 'utf8');
 const uploadSource = readFileSync(new URL('../functions/api/owner/upload-vk-media.ts', import.meta.url), 'utf8');
-assert.doesNotMatch(studioSource, /VKWebAppInit/);
-assert.doesNotMatch(studioSource, /VKWebAppGetAuthToken/);
+assert.match(studioSource, /VKWebAppInit/);
+assert.match(studioSource, /VKWebAppGetAuthToken/);
 assert.doesNotMatch(studioSource, /VKWebAppShowWallPostBox/);
-assert.doesNotMatch(studioSource, /@vkontakte\/vk-bridge/);
+assert.match(studioSource, /@vkontakte\/vk-bridge/);
+assert.match(studioSource, /VKWebAppCopyText/);
+assert.match(studioSource, /gardens-vk-setup/);
 assert.match(studioSource, /preparePhotoForVk/);
 assert.match(studioSource, /createImageBitmap/);
 assert.match(studioSource, /Повторяем загрузку файла/);
