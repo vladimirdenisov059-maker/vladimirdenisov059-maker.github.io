@@ -311,10 +311,9 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       return match[1];
     });
     return await bridge.send('VKWebAppShowWallPostBox', {
-      // Для личной страницы owner_id не передаём: ВК сам подставляет
-      // текущего пользователя. Явный положительный ID даёт ошибку кода 1.
       message,
       ...(wallAttachments.length ? { attachments: wallAttachments.join(',') } : {}),
+      owner_id: vkOwnerId,
       ...(publishAt ? { publish_date: publishAt } : {}),
     });
   };
