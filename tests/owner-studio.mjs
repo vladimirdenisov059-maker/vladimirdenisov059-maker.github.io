@@ -124,6 +124,12 @@ assert.match(capturedPrompt, /Пиши от первого лица/);
 assert.match(capturedPrompt, /Первые примерно 15 лет/);
 assert.match(capturedPrompt, /Только после 2019 года/);
 
+const unconfiguredStatusResponse = await vkStatus({
+  request: makeRequest('/api/owner/vk-status', {}),
+  env: { ADMIN_PASSWORD: password },
+});
+assert.equal(unconfiguredStatusResponse.status, 503);
+assert.match((await unconfiguredStatusResponse.json()).error, /VK_ACCESS_TOKEN/);
 const statusResponse = await vkStatus({ request: makeRequest('/api/owner/vk-status', {}), env });
 const statusBody = await statusResponse.json();
 assert.equal(statusResponse.status, 200);

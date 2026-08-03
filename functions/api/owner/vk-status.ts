@@ -37,6 +37,13 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
       url: `https://vk.com/id${ownerId}`,
     });
   } catch (error) {
+    const reason = error instanceof Error ? error.message : '';
+    if (reason === 'VK_NOT_CONFIGURED') {
+      return respond({
+        configured: false,
+        error: 'Серверный доступ ВК не настроен: добавьте VK_ACCESS_TOKEN и VK_OWNER_ID в Cloudflare Pages.',
+      }, 503);
+    }
     const code = vkErrorCode(error);
     console.error('VK users.get failed', code ?? error);
     return respond({
