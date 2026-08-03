@@ -31,9 +31,9 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
           <input id="owner-password" name="password" type="password" autocomplete="current-password" minlength="12" required />
           <p class="field-help">Пароль проверяется в Cloudflare и не записывается на сайт.</p>
           <div class="vk-connect-panel">
-            <p data-vk-state>Запускаем приложение ВКонтакте…</p>
-            <button class="secondary-button" type="button" data-vk-connect disabled>Подключить мою страницу ВК</button>
-            <p class="field-help">ВКонтакте сам покажет запрашиваемые разрешения. Ключ доступа не сохраняется на сайте.</p>
+            <p data-vk-state>Введите пароль и нажмите «Проверить подключение ВК».</p>
+            <button class="secondary-button" type="button" data-vk-connect>Проверить подключение ВК</button>
+            <p class="field-help">Публикация выполняется сервером напрямую, без всплывающих окон ВКонтакте.</p>
           </div>
         </section>
 
@@ -107,10 +107,10 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         <button class="button publish-button" type="button" data-publish-button disabled>Опубликовать сейчас</button>
         <p class="studio-status" data-publish-status aria-live="polite"></p>
         <div class="manual-publish" data-manual-publish hidden>
-          <p><strong>ВКонтакте не разрешил приложению создать запись автоматически.</strong> Вложения уже загружены в ваши фото и видео.</p>
+          <p><strong>ВКонтакте отклонил запись при автоматической публикации.</strong> Вложения уже загружены в ваши фото и видео — их можно прикрепить вручную.</p>
           <div class="button-row">
             <button class="secondary-button" type="button" data-manual-copy>Скопировать текст поста</button>
-            <a class="secondary-button" href="https://vk.ru/dionis1959" target="_top" rel="noopener">Открыть мою страницу ВК</a>
+            <a class="secondary-button" href="https://vk.ru/dionis1959" target="_blank" rel="noopener noreferrer">Открыть мою страницу ВК</a>
           </div>
         </div>
         <p data-published-link></p>
@@ -129,12 +129,6 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
 </BaseLayout>
 
 <script>
-  import bridge from '@vkontakte/vk-bridge';
-
-  const VK_APP_ID = 54704308;
-  const VK_APP_URL = 'https://vk.ru/app54704308';
-  const vkLaunchParams = new URLSearchParams(window.location.search);
-  const isVkMiniApp = vkLaunchParams.has('vk_app_id') || vkLaunchParams.has('vk_user_id') || vkLaunchParams.has('vk_platform');
   const form = document.querySelector<HTMLFormElement>('[data-owner-form]');
   const passwordInput = document.querySelector<HTMLInputElement>('#owner-password');
   const plantInput = document.querySelector<HTMLInputElement>('#owner-plant');
@@ -169,17 +163,12 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const historyList = document.querySelector<HTMLElement>('[data-history-list]');
 
   type MediaItem = { id: string; file: File; previewUrl: string };
-  type VkUploadServer = { upload_url?: string };
   type VkPhotoUploadResult = { server?: number; photo?: string; hash?: string };
-  type VkSavedPhoto = { id?: number; owner_id?: number; access_key?: string };
-  type VkSavedVideo = VkUploadServer & { video_id?: number; owner_id?: number; access_key?: string };
   type HistoryEntry = { id: string; platform: 'vk' | 'ok' | 'dzen'; title: string; status: 'published' | 'scheduled' | 'error'; createdAt: string; scheduledAt?: string; url?: string };
   let mediaItems: MediaItem[] = [];
   const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
-  let vkAccessToken = '';
   let vkOwnerId: number | null = null;
-  let vkBridgeReady = false;
   let busy = false;
   const createPublishRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   let publishRequestId = createPublishRequestId();
@@ -201,11 +190,31 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const updateCounter = () => {
     if (characterCount) characterCount.textContent = `${draft?.value.length ?? 0} знаков`;
   };
+  const copyTextWithFallback = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const helper = document.createElement('textarea');
+      helper.value = text;
+      helper.style.position = 'fixed';
+      helper.style.top = '-1000px';
+      helper.style.opacity = '0';
+      document.body.appendChild(helper);
+      helper.focus();
+      helper.select();
+      let copied = false;
+      try { copied = document.execCommand('copy'); } catch { copied = false; }
+      document.body.removeChild(helper);
+      return copied;
+    }
+  };
   manualCopy?.addEventListener('click', async () => {
     const message = draft?.value ?? '';
     if (!message) return;
-    await navigator.clipboard.writeText(message);
-    setStatus(publishStatus, 'Текст скопирован. Откройте свою страницу ВК и вставьте его в новую запись.');
+    const copied = await copyTextWithFallback(message);
+    if (copied) setStatus(publishStatus, 'Текст скопирован. Откройте свою страницу ВК и вставьте его в новую запись.');
+    else setStatus(publishStatus, 'Не удалось скопировать автоматически. Выделите текст в поле выше и скопируйте вручную (Ctrl+C).', true);
   });
   const updatePublishButton = () => {
     if (!publishButton) return;
@@ -260,7 +269,6 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const ownerHeaders = (password: string, json = false) => {
     const headers: Record<string, string> = { Authorization: `Bearer ${password}` };
     if (json) headers['Content-Type'] = 'application/json';
-    if (vkAccessToken) headers['X-VK-Access-Token'] = vkAccessToken;
     return headers;
   };
 
@@ -305,113 +313,32 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     catch (error) { setStatus(historyStatus, error instanceof Error ? error.message : 'Не удалось сохранить запись в истории.', true); }
   };
   historyRefresh?.addEventListener('click', () => void loadHistory());
-  const callVkThroughBridge = async <T,>(method: string, parameters: Record<string, string | number> = {}) => {
-    if (!vkAccessToken || !vkBridgeReady) throw new Error('Сначала подключите свою страницу ВК.');
-    const result = await bridge.send('VKWebAppCallAPIMethod', {
-      method,
-      params: { ...parameters, access_token: vkAccessToken, v: '5.199' },
-    });
-    return result.response as T;
-  };
-  const showVkWallPostBox = async (message: string, attachments: string[], publishAt: number | null) => {
-    if (!vkBridgeReady || !vkOwnerId) throw new Error('Сначала подключите свою страницу ВК.');
-    if (message.length > 15_000) throw new Error('Текст длиннее 15 000 знаков. Сократите его перед публикацией.');
-    if (attachments.length > 10) throw new Error('ВКонтакте разрешает прикрепить к записи не более 10 вложений.');
-    const wallAttachments = attachments.map((attachment) => {
-      // Окно публикации VK Mini Apps принимает только type<owner_id>_<media_id>.
-      // photos.saveWallPhoto/video.save могут дополнительно вернуть access_key,
-      // но его нельзя добавлять к идентификатору в VKWebAppShowWallPostBox.
-      const match = attachment.match(/^((?:photo|video)-?\d+_\d+)(?:_.+)?$/);
-      if (!match?.[1]) throw new Error(`ВКонтакте вернул неверный идентификатор вложения: ${attachment}.`);
-      return match[1];
-    });
-    return await bridge.send('VKWebAppShowWallPostBox', {
-      message,
-      ...(wallAttachments.length ? { attachments: wallAttachments.join(',') } : {}),
-      owner_id: vkOwnerId,
-      ...(publishAt ? { publish_date: publishAt } : {}),
-    });
-  };
-  const requestVkAccessToken = async () => {
-    if (!vkBridgeReady) throw new Error('Приложение ВКонтакте ещё не готово.');
-    const result = await bridge.send('VKWebAppGetAuthToken', {
-      app_id: VK_APP_ID,
-      scope: 'wall,photos,video',
-    });
-    if (!result.access_token) throw new Error('ВКонтакте не выдал ключ доступа.');
-    vkAccessToken = result.access_token;
-    return vkAccessToken;
-  };
 
   const checkVkConnection = async (password: string) => {
+    if (!form?.dataset.statusEndpoint) return;
     try {
-      if (vkAccessToken && vkBridgeReady) {
-        const users = await callVkThroughBridge<Array<{ id: number; first_name?: string; last_name?: string }>>('users.get', { fields: 'screen_name' });
-        const user = users[0];
-        if (!user?.id) throw new Error('ВКонтакте не вернул данные страницы.');
-        vkOwnerId = user.id;
-        vkConfigured = true;
-        const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
-        if (vkState) vkState.textContent = `Подключена личная страница ВК: ${name || `ID ${user.id}`}.`;
-      } else {
-        if (!form?.dataset.statusEndpoint) return;
-        const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
-        const data = await response.json() as { configured?: boolean; ownerId?: number; name?: string; error?: string };
-        vkConfigured = response.ok && data.configured === true;
-        vkOwnerId = data.ownerId || null;
-        if (vkState) vkState.textContent = vkConfigured
-          ? `Подключена личная страница ВК: ${data.name || 'владелец'}.`
-          : (data.error || 'ВКонтакте пока не подключён.');
-      }
+      const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
+      const data = await response.json() as { configured?: boolean; ownerId?: number; name?: string; error?: string };
+      vkConfigured = response.ok && data.configured === true;
+      vkOwnerId = data.ownerId || null;
+      if (vkState) vkState.textContent = vkConfigured
+        ? `Подключена личная страница ВК: ${data.name || 'владелец'}. Публикация выполняется автоматически, без окон ВК.`
+        : (data.error || 'ВКонтакте пока не подключён.');
     } catch {
       vkConfigured = false;
       vkOwnerId = null;
-      if (vkState) vkState.textContent = 'ВКонтакте не подтвердил доступ. Нажмите «Подключить мою страницу ВК» ещё раз.';
+      if (vkState) vkState.textContent = 'Не удалось проверить подключение ВК. Проверьте интернет и повторите.';
     }
     updatePublishButton();
   };
 
-  const initializeVkMiniApp = async () => {
-    if (!isVkMiniApp) {
-      if (vkState) vkState.textContent = 'На сайте можно создавать и исправлять черновики. Для публикации откройте этот же редактор внутри ВКонтакте.';
-      if (vkConnectButton) {
-        vkConnectButton.disabled = false;
-        vkConnectButton.textContent = 'Открыть редактор во ВКонтакте';
-      }
-      return;
-    }
-    try {
-      await Promise.race([
-        bridge.send('VKWebAppInit'),
-        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('VK Mini App timeout')), 5000)),
-      ]);
-      vkBridgeReady = true;
-      if (vkConnectButton) vkConnectButton.disabled = false;
-      if (vkState) vkState.textContent = 'Приложение ВК запущено. Нажмите кнопку ниже, чтобы подключить свою страницу.';
-    } catch {
-      if (vkConnectButton) vkConnectButton.disabled = false;
-      if (vkState) vkState.textContent = 'ВКонтакте не ответил. Перезагрузите приложение и повторите подключение.';
-    }
-  };
-
   vkConnectButton?.addEventListener('click', async () => {
-    if (!isVkMiniApp) {
-      window.open(VK_APP_URL, '_blank', 'noopener,noreferrer');
-      return;
-    }
     const password = passwordInput?.value ?? '';
     if (password.length < 12) return setStatus(vkState, 'Сначала введите пароль владельца.', true);
-    if (!vkBridgeReady) return setStatus(vkState, 'Откройте редактор через приложение ВКонтакте и повторите.', true);
     vkConnectButton.disabled = true;
-    setStatus(vkState, 'ВКонтакте запрашивает разрешения на стену, фото и видео…');
+    setStatus(vkState, 'Проверяем подключение ВКонтакте…');
     try {
-      await requestVkAccessToken();
       await checkVkConnection(password);
-    } catch {
-      vkAccessToken = '';
-      vkConfigured = false;
-      setStatus(vkState, 'Подключение не завершено. Разрешите доступ в окне ВКонтакте и повторите.', true);
-      updatePublishButton();
     } finally {
       vkConnectButton.disabled = false;
     }
@@ -467,7 +394,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       if (!response.ok || !data.post) throw new Error(data.error || 'Не удалось создать черновик.');
       if (draft) draft.value = data.post;
       if (draftSource) draftSource.textContent = data.matchedPlant ? `Использован опубликованный опыт: ${data.matchedPlant}` : 'Черновик создан по добавленным вами наблюдениям.';
-      if (!vkAccessToken) vkConfigured = data.vkConfigured === true;
+      vkConfigured = data.vkConfigured === true;
       if (approval) approval.checked = false;
       publishRequestId = createPublishRequestId();
       updateCounter(); updateScheduleMinimum(); updatePublishButton(); renderMedia();
@@ -475,8 +402,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       if (mediaSection) mediaSection.hidden = false;
       if (publishSection) publishSection.hidden = false;
       setStatus(status, 'Черновик готов. Теперь внимательно проверьте и исправьте его.');
-      if (vkAccessToken || vkConfigured) await checkVkConnection(password);
-      else if (vkState) vkState.textContent = 'Нажмите «Подключить мою страницу ВК». Черновик уже можно исправлять, сохранять и копировать.';
+      await checkVkConnection(password);
       editorSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
       setStatus(status, error instanceof Error ? error.message : 'Произошла ошибка.', true);
@@ -488,11 +414,13 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   copyButton?.addEventListener('click', async () => {
     const text = draft?.value.trim() ?? '';
     if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
+    const copied = await copyTextWithFallback(text);
+    if (copied) {
       copyButton.textContent = 'Скопировано';
       window.setTimeout(() => { copyButton.textContent = 'Копировать'; }, 1800);
-    } catch { setStatus(publishStatus, 'Не удалось скопировать автоматически. Выделите текст вручную.', true); }
+    } else {
+      setStatus(publishStatus, 'Не удалось скопировать автоматически. Выделите текст вручную.', true);
+    }
   });
   downloadButton?.addEventListener('click', () => {
     const text = draft?.value.trim() ?? '';
@@ -571,25 +499,6 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       setStatus(mediaStatus, `Загружаем во ВКонтакте файл ${index + 1} из ${mediaItems.length}: ${item.file.name}`);
       let attachment: string;
       try {
-        let bridgeUploadUrl = '';
-        let bridgeVideo: VkSavedVideo | null = null;
-        if (vkAccessToken && vkBridgeReady && vkOwnerId) {
-          if (kind === 'photo') {
-            const server = await callVkThroughBridge<VkUploadServer>('photos.getWallUploadServer');
-            if (!server.upload_url) throw new Error('ВКонтакте не выдал адрес для загрузки фотографии.');
-            bridgeUploadUrl = server.upload_url;
-          } else {
-            bridgeVideo = await callVkThroughBridge<VkSavedVideo>('video.save', {
-              name: item.file.name.replace(/\.[^.]+$/, '').slice(0, 128) || 'Видео из сада Владимира Денисова',
-              wallpost: 0,
-            });
-            if (!bridgeVideo.upload_url || !bridgeVideo.video_id || !bridgeVideo.owner_id || bridgeVideo.owner_id !== vkOwnerId) {
-              throw new Error('ВКонтакте не подготовил загрузку видео.');
-            }
-            bridgeUploadUrl = bridgeVideo.upload_url;
-          }
-        }
-
         const uploadFile = kind === 'photo' ? await preparePhotoForVk(item.file) : item.file;
         const extension = uploadFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'photo' ? 'jpg' : 'mp4');
         const headers: Record<string, string> = {
@@ -597,9 +506,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
           'X-File-Size': String(uploadFile.size),
           'X-File-Type': uploadFile.type,
           'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
-          ...(bridgeUploadUrl ? { 'X-VK-Upload-URL': bridgeUploadUrl } : {}),
         };
-        if (bridgeUploadUrl) delete headers['X-VK-Access-Token'];
         const uploadEndpoint = (form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media') + '?kind=' + kind;
         let response: Response | null = null;
         let networkError: unknown = null;
@@ -619,25 +526,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         if (!response) throw networkError ?? new Error('Нет связи с защищённым сервисом загрузки.');
         const data = await readApiJson<{ uploaded?: boolean; attachment?: string; uploadResult?: VkPhotoUploadResult; error?: string }>(response, `Не удалось прочитать ответ после загрузки файла «${item.file.name}».`);
         if (!response.ok || !data.uploaded) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
-
-        if (bridgeUploadUrl && kind === 'photo') {
-          const uploadResult = data.uploadResult;
-          if (!uploadResult?.photo || !uploadResult.hash || uploadResult.server === undefined) throw new Error('ВКонтакте не подтвердил загрузку фотографии.');
-          const saved = await callVkThroughBridge<VkSavedPhoto[]>('photos.saveWallPhoto', {
-            user_id: Number(vkOwnerId),
-            photo: uploadResult.photo,
-            server: uploadResult.server,
-            hash: uploadResult.hash,
-          });
-          const photo = saved[0];
-          if (!photo?.id || !photo.owner_id || photo.owner_id !== vkOwnerId) throw new Error('ВКонтакте не сохранил фотографию.');
-          attachment = `photo${photo.owner_id}_${photo.id}${photo.access_key ? `_${photo.access_key}` : ''}`;
-        } else if (bridgeUploadUrl && bridgeVideo) {
-          attachment = `video${bridgeVideo.owner_id}_${bridgeVideo.video_id}${bridgeVideo.access_key ? `_${bridgeVideo.access_key}` : ''}`;
-        } else {
-          if (!data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
-          attachment = data.attachment;
-        }
+        if (!data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
+        attachment = data.attachment;
       } catch (error) {
         const uploadedCount = attachments.length;
         const detail = russianError(error, 'Нет связи с защищённым сервисом загрузки. Проверьте интернет и повторите попытку.');
@@ -661,20 +551,9 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       const date = publishDate?.value ? new Date(publishDate.value) : null;
       if (!date || Number.isNaN(date.getTime()) || date.getTime() < Date.now() + 60_000) return setStatus(publishStatus, 'Выберите дату и время в будущем.', true);
       publishAt = Math.floor(date.getTime() / 1000);
-      confirmation = `Открыть окно ВКонтакте и поставить пост в очередь на ${date.toLocaleString('ru-RU')}?`;
+      confirmation = `Поставить пост в очередь ВКонтакте на ${date.toLocaleString('ru-RU')}?`;
     }
     if (!window.confirm(confirmation)) return;
-
-    if (isVkMiniApp && vkBridgeReady) {
-      setStatus(publishStatus, 'Обновляем разрешение ВКонтакте перед публикацией…');
-      try {
-        await requestVkAccessToken();
-        await checkVkConnection(password);
-        if (!vkConfigured || !vkOwnerId) throw new Error('ВКонтакте не подтвердил подключение страницы.');
-      } catch (error) {
-        return setStatus(publishStatus, russianError(error, 'Не удалось обновить разрешение ВКонтакте. Нажмите «Подключить мою страницу ВК» и повторите.'), true);
-      }
-    }
 
     busy = true; updatePublishButton();
     setStatus(publishStatus, mediaItems.length ? 'Сначала загружаем выбранные вложения…' : 'Отправляем одобренный текст во ВКонтакте…');
@@ -683,28 +562,15 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     try {
       const attachments = await uploadMedia(password);
       uploadedAttachmentCount = attachments.length;
-      setStatus(publishStatus, publishAt ? 'Открываем окно ВКонтакте для подтверждения отложенной публикации…' : 'Открываем окно ВКонтакте для подтверждения публикации…');
-      let data: { published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string };
-      if (vkAccessToken && vkBridgeReady && vkOwnerId) {
-        wallRequestStarted = true;
-        const result = await showVkWallPostBox(message, attachments, publishAt);
-        if (!result.post_id) throw new Error('ВКонтакте не вернул номер записи.');
-        data = {
-          published: true,
-          scheduled: publishAt !== null,
-          publishAt: publishAt ?? undefined,
-          url: `https://vk.com/wall${vkOwnerId}_${result.post_id}`,
-        };
-      } else {
-        wallRequestStarted = true;
-        const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
-          method: 'POST',
-          headers: ownerHeaders(password, true),
-          body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
-        });
-        data = await readApiJson<typeof data>(response, 'Не удалось прочитать ответ сервиса публикации.');
-        if (!response.ok) throw new Error(data.error || 'Не удалось отправить пост.');
-      }
+      setStatus(publishStatus, publishAt ? 'Ставим пост в очередь ВКонтакте…' : 'Публикуем пост на стене ВКонтакте…');
+      wallRequestStarted = true;
+      const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
+        method: 'POST',
+        headers: ownerHeaders(password, true),
+        body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
+      });
+      const data = await readApiJson<{ published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string }>(response, 'Не удалось прочитать ответ сервиса публикации.');
+      if (!response.ok) throw new Error(data.error || 'Не удалось отправить пост.');
       if (!data.published || !data.url) throw new Error(data.error || 'Не удалось отправить пост.');
       const scheduledDate = data.publishAt ? new Date(data.publishAt * 1000) : null;
       const attachmentNote = uploadedAttachmentCount ? ` Вложения прикреплены: ${uploadedAttachmentCount} из ${mediaItems.length}.` : ' Публикация без вложений.';
@@ -726,7 +592,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       });
     } catch (error) {
       const fallback = wallRequestStarted
-        ? 'Публикация не подтверждена в окне ВКонтакте. Проверьте, что в окне ВК была нажата кнопка публикации.'
+        ? 'ВКонтакте отклонил публикацию записи. Пост не создан и не поставлен в очередь.'
         : 'Не удалось связаться с сервисом публикации. Пост не создан и не поставлен в очередь.';
       const detail = russianError(error, fallback);
       const attachmentNote = uploadedAttachmentCount ? ` Вложения успешно загружены: ${uploadedAttachmentCount} из ${mediaItems.length}.` : '';
@@ -741,7 +607,6 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   });
 
   updateScheduleMinimum();
-  void initializeVkMiniApp();
 </script>
 
 <style>
