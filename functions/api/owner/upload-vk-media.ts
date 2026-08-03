@@ -60,7 +60,8 @@ const safeUploadUrl = (value: string | undefined) => {
       || hostname.endsWith('.vkvideo.ru')
       || hostname === 'vkontakte.ru'
       || hostname.endsWith('.vkontakte.ru')
-      || hostname === 'ovu.mycdn.me'
+      || hostname === 'mycdn.me'
+      || hostname.endsWith('.mycdn.me')
       || hostname.endsWith('.vk-cdn.net');
     return url.protocol === 'https:' && isVkUploadHost ? url : null;
   } catch {
@@ -231,7 +232,12 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     if (kind === 'photo') {
       const server = await callVk<UploadServer>(env, 'photos.getWallUploadServer', new URLSearchParams(), accessToken);
       const uploadUrl = safeUploadUrl(server.upload_url);
-      if (!uploadUrl) throw new Error('INVALID_UPLOAD_URL');
+      if (!uploadUrl) {
+        let hostname = 'неизвестен';
+        try { hostname = new URL(server.upload_url ?? '').hostname; } catch { /* keep fallback */ }
+        console.error('VK returned an upload_url outside the allowed host list', server.upload_url);
+        throw Object.assign(new Error('INVALID_UPLOAD_URL'), { diagnostic: `ВК вернул адрес загрузки с непроверенным доменом: ${hostname}` });
+      }
       const uploaded = await uploadBody(request, uploadUrl);
       const rawUploadResult = await uploaded.json() as unknown;
       const uploadResult = normalizePhotoUploadResult(rawUploadResult);
