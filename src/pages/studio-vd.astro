@@ -301,7 +301,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const showVkWallPostBox = async (message: string, attachments: string[], publishAt: number | null) => {
     if (!vkBridgeReady || !vkOwnerId) throw new Error('Сначала подключите свою страницу ВК.');
     return await bridge.send('VKWebAppShowWallPostBox', {
-      owner_id: vkOwnerId,
+      // Для личной страницы owner_id не передаём: ВК сам подставляет
+      // текущего пользователя. Явный положительный ID даёт ошибку кода 1.
       message,
       ...(attachments.length ? { attachments: attachments.join(',') } : {}),
       ...(publishAt ? { publish_date: publishAt } : {}),
