@@ -33,7 +33,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
           <div class="vk-connect-panel">
             <p data-vk-state>Введите пароль и нажмите «Проверить подключение ВК».</p>
             <button class="secondary-button" type="button" data-vk-connect>Проверить подключение ВК</button>
-            <p class="field-help">Публикация выполняется сервером напрямую, без всплывающих окон ВКонтакте.</p>
+            <p class="field-help">Внутри приложения VK публикация выполняется напрямую; на обычном сайте доступно ручное копирование.</p>
           </div>
         </section>
 
@@ -174,6 +174,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const uploadedAttachments = new Map<string, string>();
   let vkConfigured = false;
   let vkBridgeReady = false;
+  let vkAccessToken: string | null = null;
+  let vkOwnerId: number | null = null;
 
   let busy = false;
   const createPublishRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
@@ -321,6 +323,17 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   historyRefresh?.addEventListener('click', () => void loadHistory());
 
   const checkVkConnection = async (password: string) => {
+    if (isVkMiniApp) {
+      vkConfigured = Boolean(vkBridgeReady && vkAccessToken && vkOwnerId);
+      setStatus(
+        vkState,
+        vkConfigured
+          ? 'Страница VK подключена. Можно публиковать и ставить посты в очередь.'
+          : 'Нажмите «Подключить VK для публикации». Ключ останется только внутри открытого приложения VK.',
+      );
+      updatePublishButton();
+      return;
+    }
     if (!form?.dataset.statusEndpoint) return;
     try {
       const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
@@ -349,15 +362,15 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     try {
       await bridge.send('VKWebAppInit');
       vkBridgeReady = true;
-      if (vkConnectButton) vkConnectButton.textContent = 'Выдать доступ VK для сайта';
-      setStatus(vkState, 'Мини-приложение готово. Введите пароль редактора и нажмите кнопку, чтобы один раз выдать серверу права VK.');
+      if (vkConnectButton) vkConnectButton.textContent = 'Подключить VK для публикации';
+      setStatus(vkState, 'Мини-приложение готово. Введите пароль редактора и подключите VK на время работы в этом окне.');
     } catch {
       setStatus(vkState, 'Не удалось запустить подключение внутри VK. Закройте приложение и откройте его повторно.', true);
     }
   };
 
-  const obtainVkSetup = async (password: string) => {
-    if (!vkBridgeReady || !form?.dataset.statusEndpoint) throw new Error('Мини-приложение VK ещё не готово.');
+  const obtainVkSetup = async () => {
+    if (!vkBridgeReady) throw new Error('Мини-приложение VK ещё не готово.');
 
     const token = await bridge.send('VKWebAppGetAuthToken', {
       app_id: VK_APP_ID,
@@ -368,28 +381,15 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       method: 'users.get',
       params: { access_token: token.access_token, v: '5.199' },
     });
-    const user = (users.response as Array<{ id?: number }>)[0];
+    const user = (users.response as Array<{ id?: number; first_name?: string; last_name?: string }>)[0];
     if (!user?.id) throw new Error('VK не вернул ID страницы владельца.');
 
-    const connectEndpoint = new URL('/api/owner/connect-vk', form.dataset.statusEndpoint).toString();
-    const response = await fetch(connectEndpoint, {
-      method: 'POST',
-      headers: ownerHeaders(password, true),
-      body: JSON.stringify({
-        accessToken: token.access_token,
-        ownerId: user.id,
-        expires: token.expires ?? null,
-        scope: token.scope,
-      }),
-    });
-    const data = await response.json() as { connected?: boolean; error?: string };
-    if (!response.ok || !data.connected) {
-      throw new Error(data.error || 'Не удалось сохранить доступ VK на сервере сайта.');
-    }
-
-    setStatus(vkState, 'Доступ VK зашифрован и сохранён. Проверяем автоматическую публикацию…');
-    await checkVkConnection(password);
-    if (!vkConfigured) throw new Error('Доступ сохранён, но VK отклонил серверную проверку. Сообщите Codex текст ошибки на экране.');
+    vkAccessToken = token.access_token;
+    vkOwnerId = user.id;
+    vkConfigured = true;
+    const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || 'владелец';
+    setStatus(vkState, `Подключена личная страница VK: ${name}. Публикация выполняется внутри VK без передачи ключа внешнему серверу.`);
+    updatePublishButton();
   };
 
   vkConnectButton?.addEventListener('click', async () => {
@@ -398,7 +398,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     vkConnectButton.disabled = true;
     setStatus(vkState, isVkMiniApp ? 'VK запрашивает права на стену, фотографии и видео…' : 'Проверяем подключение ВКонтакте…');
     try {
-      if (isVkMiniApp) await obtainVkSetup(password);
+      if (isVkMiniApp) await obtainVkSetup();
       else await checkVkConnection(password);
     } catch (error) {
       setStatus(vkState, error instanceof Error ? error.message : 'Не удалось получить доступ VK.', true);
@@ -459,7 +459,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       if (!response.ok || !data.post) throw new Error(data.error || 'Не удалось создать черновик.');
       if (draft) draft.value = data.post;
       if (draftSource) draftSource.textContent = data.matchedPlant ? `Использован опубликованный опыт: ${data.matchedPlant}` : 'Черновик создан по добавленным вами наблюдениям.';
-      vkConfigured = data.vkConfigured === true;
+      vkConfigured = isVkMiniApp ? Boolean(vkAccessToken && vkOwnerId) : data.vkConfigured === true;
       if (approval) approval.checked = false;
       publishRequestId = createPublishRequestId();
       updateCounter(); updateScheduleMinimum(); updatePublishButton(); renderMedia();
@@ -518,6 +518,59 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     return message;
   };
 
+  const callVkBridge = async <T,>(method: string, params: Record<string, string | number> = {}) => {
+    if (!vkAccessToken) throw new Error('Сначала выдайте приложению доступ VK.');
+    const result = await bridge.send('VKWebAppCallAPIMethod', {
+      method,
+      params: { ...params, access_token: vkAccessToken, v: '5.199' },
+    });
+    if (result.response === undefined) throw new Error('VK не вернул результат операции.');
+    return result.response as T;
+  };
+
+  const proxyVkUpload = async (
+    kind: 'photo' | 'video',
+    uploadFile: File,
+    originalName: string,
+    password: string,
+    index: number,
+    uploadUrl?: string,
+  ) => {
+    const extension = uploadFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'photo' ? 'jpg' : 'mp4');
+    const headers: Record<string, string> = {
+      ...ownerHeaders(password),
+      'X-File-Size': String(uploadFile.size),
+      'X-File-Type': uploadFile.type,
+      'X-Video-Title': encodeURIComponent(originalName.replace(/\.[^.]+$/, '')),
+      ...(uploadUrl ? { 'X-VK-Upload-URL': uploadUrl } : {}),
+    };
+    const endpoint = (form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media') + '?kind=' + kind;
+    let response: Response | null = null;
+    let networkError: unknown = null;
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const body = new FormData();
+      body.append(kind === 'photo' ? 'photo' : 'video_file', uploadFile, 'garden-' + kind + '.' + extension);
+      try {
+        response = await fetch(endpoint, { method: 'POST', headers, body });
+        break;
+      } catch (error) {
+        networkError = error;
+        if (attempt === 4) break;
+        setStatus(mediaStatus, 'Связь прервалась. Повторяем загрузку файла ' + (index + 1) + ' автоматически (' + (attempt + 1) + ' из 4)…');
+        await new Promise((resolve) => window.setTimeout(resolve, attempt * 1200));
+      }
+    }
+    if (!response) throw networkError ?? new Error('Нет связи с защищённым сервисом загрузки.');
+    const data = await readApiJson<{
+      uploaded?: boolean;
+      attachment?: string;
+      uploadResult?: VkPhotoUploadResult;
+      error?: string;
+    }>(response, `Не удалось прочитать ответ после загрузки файла «${originalName}».`);
+    if (!response.ok || !data.uploaded) throw new Error(data.error || `Не удалось загрузить ${originalName}.`);
+    return data;
+  };
+
   const readApiJson = async <T,>(response: Response, fallback: string): Promise<T> => {
     try {
       return await response.json() as T;
@@ -560,44 +613,54 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       const item = mediaItems[index];
       const cached = uploadedAttachments.get(item.id);
       if (cached) { attachments.push(cached); continue; }
-      const kind = item.file.type.startsWith('image/') ? 'photo' : 'video';
+      const kind: 'photo' | 'video' = item.file.type.startsWith('image/') ? 'photo' : 'video';
       setStatus(mediaStatus, `Загружаем во ВКонтакте файл ${index + 1} из ${mediaItems.length}: ${item.file.name}`);
       let attachment: string;
       try {
         const uploadFile = kind === 'photo' ? await preparePhotoForVk(item.file) : item.file;
-        const extension = uploadFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'photo' ? 'jpg' : 'mp4');
-        const headers: Record<string, string> = {
-          ...ownerHeaders(password),
-          'X-File-Size': String(uploadFile.size),
-          'X-File-Type': uploadFile.type,
-          'X-Video-Title': encodeURIComponent(item.file.name.replace(/\.[^.]+$/, '')),
-        };
-        const uploadEndpoint = (form?.dataset.uploadEndpoint || '/api/owner/upload-vk-media') + '?kind=' + kind;
-        let response: Response | null = null;
-        let networkError: unknown = null;
-        for (let attempt = 1; attempt <= 4; attempt += 1) {
-          const body = new FormData();
-          body.append(kind === 'photo' ? 'photo' : 'video_file', uploadFile, 'garden-' + kind + '.' + extension);
-          try {
-            response = await fetch(uploadEndpoint, { method: 'POST', headers, body });
-            break;
-          } catch (error) {
-            networkError = error;
-            if (attempt === 4) break;
-            setStatus(mediaStatus, 'Связь прервалась. Повторяем загрузку файла ' + (index + 1) + ' автоматически (' + (attempt + 1) + ' из 4)…');
-            await new Promise((resolve) => window.setTimeout(resolve, attempt * 1200));
+        if (isVkMiniApp && vkAccessToken && vkOwnerId) {
+          if (kind === 'photo') {
+            const server = await callVkBridge<{ upload_url?: string }>('photos.getWallUploadServer');
+            if (!server.upload_url) throw new Error('VK не вернул адрес загрузки фотографии.');
+            const uploaded = await proxyVkUpload(kind, uploadFile, item.file.name, password, index, server.upload_url);
+            const uploadResult = uploaded.uploadResult;
+            if (!uploadResult?.photo || !uploadResult.hash || !Number.isFinite(Number(uploadResult.server))) {
+              throw new Error('VK принял файл, но не вернул данные для сохранения фотографии.');
+            }
+            const saved = await callVkBridge<Array<{ id?: number; owner_id?: number; access_key?: string }>>(
+              'photos.saveWallPhoto',
+              {
+                user_id: vkOwnerId,
+                photo: uploadResult.photo,
+                server: Number(uploadResult.server),
+                hash: uploadResult.hash,
+              },
+            );
+            const photo = saved[0];
+            if (!photo?.id || !photo.owner_id) throw new Error('VK не сохранил фотографию.');
+            attachment = `photo${photo.owner_id}_${photo.id}${photo.access_key ? `_${photo.access_key}` : ''}`;
+          } else {
+            const video = await callVkBridge<{ upload_url?: string; video_id?: number; owner_id?: number; access_key?: string }>(
+              'video.save',
+              { name: item.file.name.replace(/\.[^.]+$/, '').slice(0, 128) || 'Видео из сада', wallpost: 0 },
+            );
+            if (!video.upload_url || !video.video_id || !video.owner_id) throw new Error('VK не подготовил загрузку видео.');
+            await proxyVkUpload(kind, uploadFile, item.file.name, password, index, video.upload_url);
+            attachment = `video${video.owner_id}_${video.video_id}${video.access_key ? `_${video.access_key}` : ''}`;
           }
+        } else {
+          const uploaded = await proxyVkUpload(kind, uploadFile, item.file.name, password, index);
+          if (!uploaded.attachment) throw new Error(uploaded.error || `Не удалось загрузить ${item.file.name}.`);
+          attachment = uploaded.attachment;
         }
-        if (!response) throw networkError ?? new Error('Нет связи с защищённым сервисом загрузки.');
-        const data = await readApiJson<{ uploaded?: boolean; attachment?: string; uploadResult?: VkPhotoUploadResult; error?: string }>(response, `Не удалось прочитать ответ после загрузки файла «${item.file.name}».`);
-        if (!response.ok || !data.uploaded) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
-        if (!data.attachment) throw new Error(data.error || `Не удалось загрузить ${item.file.name}.`);
-        attachment = data.attachment;
       } catch (error) {
         const uploadedCount = attachments.length;
-        const detail = russianError(error, 'Нет связи с защищённым сервисом загрузки. Проверьте интернет и повторите попытку.');
+        const detail = russianError(error, 'Не удалось загрузить файл во ВКонтакте. Проверьте интернет и повторите попытку.');
         setStatus(mediaStatus, `Файл «${item.file.name}» не загружен. ${detail}`, true);
-        throw new Error(`Публикация остановлена на загрузке вложений: файл «${item.file.name}» не загружен. ${detail} ${uploadedCount ? `До сбоя загружено файлов: ${uploadedCount}. ` : ''}Пост не создан и не поставлен в очередь.`, { cause: error });
+        throw new Error(
+          `Публикация остановлена на загрузке вложений: файл «${item.file.name}» не загружен. ${detail} ${uploadedCount ? `До сбоя загружено файлов: ${uploadedCount}. ` : ''}Пост не создан и не поставлен в очередь.`,
+          { cause: error },
+        );
       }
       uploadedAttachments.set(item.id, attachment);
       attachments.push(attachment);
@@ -629,13 +692,32 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       uploadedAttachmentCount = attachments.length;
       setStatus(publishStatus, publishAt ? 'Ставим пост в очередь ВКонтакте…' : 'Публикуем пост на стене ВКонтакте…');
       wallRequestStarted = true;
-      const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
-        method: 'POST',
-        headers: ownerHeaders(password, true),
-        body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
-      });
-      const data = await readApiJson<{ published?: boolean; scheduled?: boolean; publishAt?: number; url?: string; error?: string }>(response, 'Не удалось прочитать ответ сервиса публикации.');
-      if (!response.ok) throw new Error(data.error || 'Не удалось отправить пост.');
+      let data: { published?: boolean; scheduled?: boolean; publishAt?: number | null; url?: string; error?: string };
+      if (isVkMiniApp && vkAccessToken && vkOwnerId) {
+        const params: Record<string, string | number> = {
+          owner_id: vkOwnerId,
+          message,
+          guid: publishRequestId,
+        };
+        if (attachments.length) params.attachments = attachments.join(',');
+        if (publishAt !== null) params.publish_date = publishAt;
+        const result = await callVkBridge<{ post_id?: number }>('wall.post', params);
+        if (!result.post_id) throw new Error('VK не вернул номер созданной записи.');
+        data = {
+          published: true,
+          scheduled: publishAt !== null,
+          publishAt,
+          url: `https://vk.com/wall${vkOwnerId}_${result.post_id}`,
+        };
+      } else {
+        const response = await fetch(form?.dataset.publishEndpoint || '/api/owner/publish-vk', {
+          method: 'POST',
+          headers: ownerHeaders(password, true),
+          body: JSON.stringify({ message, attachments, publishAt, approved: true, requestId: publishRequestId }),
+        });
+        data = await readApiJson<typeof data>(response, 'Не удалось прочитать ответ сервиса публикации.');
+        if (!response.ok) throw new Error(data.error || 'Не удалось отправить пост.');
+      }
       if (!data.published || !data.url) throw new Error(data.error || 'Не удалось отправить пост.');
       const scheduledDate = data.publishAt ? new Date(data.publishAt * 1000) : null;
       const attachmentNote = uploadedAttachmentCount ? ` Вложения прикреплены: ${uploadedAttachmentCount} из ${mediaItems.length}.` : ' Публикация без вложений.';
