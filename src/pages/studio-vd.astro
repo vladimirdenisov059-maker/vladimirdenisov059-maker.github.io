@@ -300,11 +300,21 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   };
   const showVkWallPostBox = async (message: string, attachments: string[], publishAt: number | null) => {
     if (!vkBridgeReady || !vkOwnerId) throw new Error('Сначала подключите свою страницу ВК.');
+    if (message.length > 15_000) throw new Error('Текст длиннее 15 000 знаков. Сократите его перед публикацией.');
+    if (attachments.length > 10) throw new Error('ВКонтакте разрешает прикрепить к записи не более 10 вложений.');
+    const wallAttachments = attachments.map((attachment) => {
+      // Окно публикации VK Mini Apps принимает только type<owner_id>_<media_id>.
+      // photos.saveWallPhoto/video.save могут дополнительно вернуть access_key,
+      // но его нельзя добавлять к идентификатору в VKWebAppShowWallPostBox.
+      const match = attachment.match(/^((?:photo|video)-?\d+_\d+)(?:_.+)?$/);
+      if (!match?.[1]) throw new Error(`ВКонтакте вернул неверный идентификатор вложения: ${attachment}.`);
+      return match[1];
+    });
     return await bridge.send('VKWebAppShowWallPostBox', {
       // Для личной страницы owner_id не передаём: ВК сам подставляет
       // текущего пользователя. Явный положительный ID даёт ошибку кода 1.
       message,
-      ...(attachments.length ? { attachments: attachments.join(',') } : {}),
+      ...(wallAttachments.length ? { attachments: wallAttachments.join(',') } : {}),
       ...(publishAt ? { publish_date: publishAt } : {}),
     });
   };
