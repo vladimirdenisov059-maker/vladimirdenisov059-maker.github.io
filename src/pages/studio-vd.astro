@@ -193,7 +193,6 @@ const okPublishEndpoint = `${apiOrigin}/api/owner/publish-ok`;
   const uploadedAttachments = new Map<string, string>();
   const uploadedAttachmentsOk = new Map<string, string>();
   let vkConfigured = false;
-  let vkOwnerId: number | null = null;
   let okConfigured = false;
   let busy = false;
   const createPublishRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
@@ -352,13 +351,11 @@ const okPublishEndpoint = `${apiOrigin}/api/owner/publish-ok`;
         throw new Error(`Сервис ответил HTTP ${response.status}, но без понятного текста.`);
       }
       vkConfigured = response.ok && data.configured === true;
-      vkOwnerId = data.ownerId || null;
       if (vkState) vkState.textContent = vkConfigured
         ? `Подключена личная страница ВК: ${data.name || 'владелец'}. Публикация выполняется автоматически, без окон ВК.`
         : (data.error || 'ВКонтакте пока не подключён.');
     } catch (error) {
       vkConfigured = false;
-      vkOwnerId = null;
       const rawDetail = error instanceof Error ? error.message : String(error);
       if (vkState) vkState.textContent = `Не удалось проверить подключение ВК. Техническая причина: ${rawDetail || 'неизвестная ошибка сети'}.`;
     }
