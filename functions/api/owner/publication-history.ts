@@ -94,6 +94,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   const entries = await readHistory(env.PUBLICATION_HISTORY);
 
   if (body.action === 'list') return respond({ entries });
+  if (auth.role === 'reviewer') return respond({ error: 'Демонстрационный доступ: изменение истории публикаций недоступно.' }, 403);
   if (body.action !== 'add' || !body.entry) return respond({ error: 'Неизвестное действие.' }, 400);
 
   const id = cleanText(body.entry.id, 100);

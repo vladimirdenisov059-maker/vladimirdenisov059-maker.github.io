@@ -235,6 +235,53 @@ assert.equal(capturedWallParams.get('publish_date'), String(publishAt));
 assert.equal(capturedWallParams.get('guid'), '123e4567e89b42d3');
 assert.equal(capturedWallParams.get('access_token'), 'vk-test-token');
 
+const reviewPassword = 'temporary-reviewer-password-12';
+const reviewEnv = {
+  ...env,
+  REVIEW_PASSWORD: reviewPassword,
+  REVIEW_EXPIRES_AT: new Date(Date.now() + 60_000).toISOString(),
+};
+const expiredReviewEnv = {
+  ...env,
+  REVIEW_PASSWORD: reviewPassword,
+  REVIEW_EXPIRES_AT: new Date(Date.now() - 60_000).toISOString(),
+};
+
+const reviewerPublishBlocked = await publishVk({
+  request: makeRequest('/api/owner/publish-vk', {
+    message: approvedMessage, approved: true, requestId: '223e4567e89b42d3',
+  }, `Bearer ${reviewPassword}`),
+  env: reviewEnv,
+});
+assert.equal(reviewerPublishBlocked.status, 403);
+
+const reviewerUploadBlocked = await uploadVkMedia({
+  request: new Request('https://gardens-of-donbas-api.pages.dev/api/owner/upload-vk-media?kind=photo', {
+    method: 'POST',
+    headers: {
+      Origin: origin,
+      Authorization: `Bearer ${reviewPassword}`,
+      'X-File-Size': String(photo.size),
+      'X-File-Type': photo.type,
+    },
+    body: (() => { const form = new FormData(); form.append('photo', photo, 'garden.jpg'); return form; })(),
+  }),
+  env: reviewEnv,
+});
+assert.equal(reviewerUploadBlocked.status, 403);
+
+const reviewerStatusResponse = await vkStatus({
+  request: makeRequest('/api/owner/vk-status', {}, `Bearer ${reviewPassword}`),
+  env: reviewEnv,
+});
+assert.equal(reviewerStatusResponse.status, 200);
+
+const expiredReviewerResponse = await vkStatus({
+  request: makeRequest('/api/owner/vk-status', {}, `Bearer ${reviewPassword}`),
+  env: expiredReviewEnv,
+});
+assert.equal(expiredReviewerResponse.status, 401);
+
 const studioSource = readFileSync(new URL('../src/pages/studio-vd.astro', import.meta.url), 'utf8');
 const uploadSource = readFileSync(new URL('../functions/api/owner/upload-vk-media.ts', import.meta.url), 'utf8');
 assert.doesNotMatch(studioSource, /VKWebAppInit/);

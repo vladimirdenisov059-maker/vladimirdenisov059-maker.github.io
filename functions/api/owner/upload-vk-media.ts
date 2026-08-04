@@ -163,6 +163,9 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   if (!auth.ok) {
     return respond({ error: auth.status === 503 ? 'Закрытый редактор ещё не настроен.' : 'Неверный пароль владельца.' }, auth.status);
   }
+  if (auth.role === 'reviewer') {
+    return respond({ error: 'Демонстрационный доступ: загрузка файлов во ВКонтакте недоступна.' }, 403);
+  }
   const requestUrl = new URL(request.url);
   const kind = requestUrl.searchParams.get('kind');
   const fileSize = Number(request.headers.get('X-File-Size') ?? '0');

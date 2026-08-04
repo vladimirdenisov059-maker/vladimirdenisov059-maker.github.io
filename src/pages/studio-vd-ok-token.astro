@@ -1,0 +1,69 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+
+const vkAppId = import.meta.env.PUBLIC_VK_MINI_APP_ID || '54704308';
+const okScope = 'wall,groups,photos,video';
+---
+
+<BaseLayout title="Получение токена ОК" description="Служебная страница для одноразового получения OK_ACCESS_TOKEN.">
+  <section class="section owner-studio">
+    <div class="wrap studio-wrap">
+      <header class="studio-heading">
+        <p class="eyebrow">Служебная страница</p>
+        <h1>Получение токена Одноклассников</h1>
+        <p>Откройте эту страницу из мини-приложения внутри ОК (не в обычном браузере) и нажмите кнопку ниже один раз.</p>
+      </header>
+
+      <div class="privacy-note" role="note">
+        <strong>Как это работает:</strong> кнопка запросит у ОК токен доступа с правами <code>wall, groups, photos, video</code>. Токен появится на экране — скопируйте его целиком и передайте для сохранения в секретах Cloudflare как <code>OK_ACCESS_TOKEN</code>. Эта страница ничего никуда не отправляет сама.
+      </div>
+
+      <div class="studio-card access-card">
+        <button class="secondary-button" type="button" data-ok-token-request>Получить токен ОК</button>
+        <p data-ok-token-state class="field-help">Ожидание нажатия кнопки…</p>
+        <textarea data-ok-token-output rows="4" readonly style="width:100%; margin-top:1rem; display:none;"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <script is:inline src="https://unpkg.com/@vkontakte/vk-bridge@2/dist/browser.min.js"></script>
+  <script define:vars={{ vkAppId, okScope }} is:inline>
+    const stateEl = document.querySelector('[data-ok-token-state]');
+    const outputEl = document.querySelector('[data-ok-token-output]');
+    const buttonEl = document.querySelector('[data-ok-token-request]');
+
+    function setState(text) {
+      if (stateEl) stateEl.textContent = text;
+    }
+
+    buttonEl?.addEventListener('click', async () => {
+      if (!window.vkBridge) {
+        setState('Библиотека VK Bridge не загрузилась. Проверьте подключение к интернету и обновите страницу.');
+        return;
+      }
+      try {
+        setState('Инициализация…');
+        await window.vkBridge.send('VKWebAppInit');
+        setState('Запрашиваем токен у ОК…');
+        const result = await window.vkBridge.send('VKWebAppGetAuthToken', {
+          app_id: Number(vkAppId),
+          scope: okScope,
+        });
+        const token = result && result.access_token;
+        if (token) {
+          setState('Готово. Скопируйте токен ниже:');
+          if (outputEl) {
+            outputEl.style.display = 'block';
+            outputEl.value = token;
+            outputEl.focus();
+            outputEl.select();
+          }
+        } else {
+          setState('ОК не вернул токен. Попробуйте ещё раз внутри приложения ОК.');
+        }
+      } catch (error) {
+        setState('Ошибка: ' + (error && error.error_data && error.error_data.error_reason || error?.message || String(error)));
+      }
+    });
+  </script>
+</BaseLayout>

@@ -49,6 +49,9 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
         : 'Неверный пароль владельца.',
     }, auth.status);
   }
+  if (auth.role === 'reviewer') {
+    return respond({ error: 'Демонстрационный доступ: реальная публикация во ВКонтакте недоступна.' }, 403);
+  }
   let vkIdentity;
   try {
     vkIdentity = await resolvePersonalVkUser(request, env);

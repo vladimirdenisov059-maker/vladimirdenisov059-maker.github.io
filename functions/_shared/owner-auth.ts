@@ -1,7 +1,11 @@
 export interface OwnerEnv {
   ADMIN_PASSWORD?: string;
+  REVIEW_PASSWORD?: string;
+  REVIEW_EXPIRES_AT?: string;
   ALLOWED_ORIGINS?: string;
 }
+
+export type OwnerRole = 'owner' | 'reviewer';
 
 const defaultAllowedOrigins = [
   'https://vladimirdenisov059-maker.github.io',
@@ -62,10 +66,20 @@ export const authenticateOwner = async (request: Request, env: OwnerEnv) => {
   if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 12) return { ok: false, status: 503 } as const;
   const authorization = request.headers.get('Authorization') ?? '';
   const password = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-  if (!password || !(await secureEqual(password, env.ADMIN_PASSWORD))) {
-    return { ok: false, status: 401 } as const;
+  if (!password) return { ok: false, status: 401 } as const;
+
+  if (await secureEqual(password, env.ADMIN_PASSWORD)) {
+    return { ok: true, status: 200, role: 'owner' as OwnerRole } as const;
   }
-  return { ok: true, status: 200 } as const;
+
+  if (env.REVIEW_PASSWORD && env.REVIEW_PASSWORD.length >= 12 && env.REVIEW_EXPIRES_AT) {
+    const expiresAt = Date.parse(env.REVIEW_EXPIRES_AT);
+    if (Number.isFinite(expiresAt) && Date.now() < expiresAt && await secureEqual(password, env.REVIEW_PASSWORD)) {
+      return { ok: true, status: 200, role: 'reviewer' as OwnerRole } as const;
+    }
+  }
+
+  return { ok: false, status: 401 } as const;
 };
 
 export const readJsonBody = async <T>(request: Request, maximumBytes: number): Promise<T | null> => {

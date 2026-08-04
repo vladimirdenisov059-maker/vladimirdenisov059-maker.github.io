@@ -8,6 +8,9 @@ const publishEndpoint = `${apiOrigin}/api/owner/publish-vk`;
 const statusEndpoint = `${apiOrigin}/api/owner/vk-status`;
 const uploadEndpoint = `${apiOrigin}/api/owner/upload-vk-media`;
 const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
+const okStatusEndpoint = `${apiOrigin}/api/owner/ok-status`;
+const okUploadEndpoint = `${apiOrigin}/api/owner/upload-ok-media`;
+const okPublishEndpoint = `${apiOrigin}/api/owner/publish-ok`;
 ---
 
 <BaseLayout title="Редактор Владимира" description="Закрытый редактор авторских публикаций Владимира Денисова.">
@@ -23,7 +26,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         <strong>Как это работает:</strong> создайте черновик, исправьте текст, добавьте фотографии или видео, выберите публикацию сейчас либо по расписанию и только затем подтвердите отправку. Публикация выполняется сервером напрямую — без всплывающих окон ВКонтакте.
       </div>
 
-      <form class="studio-card access-card" data-owner-form data-draft-endpoint={draftEndpoint} data-publish-endpoint={publishEndpoint} data-status-endpoint={statusEndpoint} data-upload-endpoint={uploadEndpoint} data-history-endpoint={historyEndpoint}>
+      <form class="studio-card access-card" data-owner-form data-draft-endpoint={draftEndpoint} data-publish-endpoint={publishEndpoint} data-status-endpoint={statusEndpoint} data-upload-endpoint={uploadEndpoint} data-history-endpoint={historyEndpoint} data-ok-status-endpoint={okStatusEndpoint} data-ok-upload-endpoint={okUploadEndpoint} data-ok-publish-endpoint={okPublishEndpoint}>
         <section class="studio-step" aria-labelledby="step-access">
           <div class="step-number">Доступ</div>
           <h2 id="step-access">Пароль владельца</h2>
@@ -34,6 +37,11 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
             <p data-vk-state>Введите пароль и нажмите «Проверить подключение ВК».</p>
             <button class="secondary-button" type="button" data-vk-connect>Проверить подключение ВК</button>
             <p class="field-help">Публикация выполняется сервером от имени владельца, без окон подтверждения ВКонтакте.</p>
+          </div>
+          <div class="vk-connect-panel">
+            <p data-ok-state>Введите пароль и нажмите «Проверить подключение ОК».</p>
+            <button class="secondary-button" type="button" data-ok-connect>Проверить подключение ОК</button>
+            <p class="field-help">Публикация выполняется сервером в группу ОК, привязанную к серверным секретам.</p>
           </div>
         </section>
 
@@ -84,10 +92,21 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         <p class="studio-status" data-media-status aria-live="polite"></p>
       </section>
 
+      <section class="studio-card studio-step" data-dzen-section hidden aria-labelledby="step-dzen">
+        <div class="step-number">Дзен</div>
+        <h2 id="step-dzen">Подготовить пост для Дзена вручную</h2>
+        <p>У Дзена нет открытого API для публикации от лица обычного канала, поэтому текст и вложения переносятся вручную: скопируйте текст ниже и вставьте его в редактор Дзена, а фотографии и видео прикрепите прямо с компьютера — это те же файлы, что вы выбрали в шаге 3.</p>
+        <div class="button-row">
+          <button class="secondary-button" type="button" data-dzen-copy>Скопировать текст для Дзена</button>
+          <a class="secondary-button" href="https://dzen.ru/id/5f3cc7d2caeef80d2e74377f" target="_blank" rel="noopener noreferrer">Открыть мою страницу Дзен</a>
+        </div>
+        <p class="studio-status" data-dzen-status aria-live="polite"></p>
+      </section>
+
       <section class="studio-card studio-step publish-step" data-publish-section hidden aria-labelledby="step-four">
         <div class="step-number">Шаг 4</div>
         <h2 id="step-four">Выбрать время, одобрить и отправить</h2>
-        <p>Перед отправкой убедитесь, что выше указана именно ваша личная страница ВКонтакте.</p>
+        <p>Перед отправкой убедитесь, что выше указана именно ваша личная страница ВКонтакте. Если подключены Одноклассники, запись уйдёт также в вашу группу ОК.</p>
 
         <fieldset class="publish-mode">
           <legend>Когда опубликовать</legend>
@@ -138,6 +157,9 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const status = document.querySelector<HTMLElement>('[data-studio-status]');
   const editorSection = document.querySelector<HTMLElement>('[data-editor-section]');
   const mediaSection = document.querySelector<HTMLElement>('[data-media-section]');
+  const dzenSection = document.querySelector<HTMLElement>('[data-dzen-section]');
+  const dzenCopyButton = document.querySelector<HTMLButtonElement>('[data-dzen-copy]');
+  const dzenStatus = document.querySelector<HTMLElement>('[data-dzen-status]');
   const publishSection = document.querySelector<HTMLElement>('[data-publish-section]');
   const draft = document.querySelector<HTMLTextAreaElement>('[data-vk-draft]');
   const draftSource = document.querySelector<HTMLElement>('[data-draft-source]');
@@ -157,6 +179,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   const manualCopy = document.querySelector<HTMLButtonElement>('[data-manual-copy]');
   const vkState = document.querySelector<HTMLElement>('[data-vk-state]');
   const vkConnectButton = document.querySelector<HTMLButtonElement>('[data-vk-connect]');
+  const okState = document.querySelector<HTMLElement>('[data-ok-state]');
+  const okConnectButton = document.querySelector<HTMLButtonElement>('[data-ok-connect]');
   const publishedLink = document.querySelector<HTMLElement>('[data-published-link]');
   const historyRefresh = document.querySelector<HTMLButtonElement>('[data-history-refresh]');
   const historyStatus = document.querySelector<HTMLElement>('[data-history-status]');
@@ -167,8 +191,10 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
   type HistoryEntry = { id: string; platform: 'vk' | 'ok' | 'dzen'; title: string; status: 'published' | 'scheduled' | 'error'; createdAt: string; scheduledAt?: string; url?: string };
   let mediaItems: MediaItem[] = [];
   const uploadedAttachments = new Map<string, string>();
+  const uploadedAttachmentsOk = new Map<string, string>();
   let vkConfigured = false;
   let vkOwnerId: number | null = null;
+  let okConfigured = false;
   let busy = false;
   const createPublishRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   let publishRequestId = createPublishRequestId();
@@ -220,7 +246,8 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     if (!publishButton) return;
     const scheduledReady = selectedMode() === 'now' || Boolean(publishDate?.value);
     publishButton.disabled = busy || !vkConfigured || !approval?.checked || !scheduledReady || (draft?.value.trim().length ?? 0) < 100;
-    publishButton.textContent = selectedMode() === 'scheduled' ? 'Поставить в очередь ВК' : 'Опубликовать сейчас';
+    const platforms = okConfigured ? 'ВК и ОК' : 'ВК';
+    publishButton.textContent = selectedMode() === 'scheduled' ? `Поставить в очередь (${platforms})` : `Опубликовать сейчас (${platforms})`;
   };
   const localDateTimeValue = (date: Date) => {
     const pad = (value: number) => String(value).padStart(2, '0');
@@ -350,6 +377,49 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     }
   });
 
+  const checkOkConnection = async (password: string) => {
+    if (!form?.dataset.okStatusEndpoint) return;
+    try {
+      const response = await fetch(form.dataset.okStatusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
+      let data: { configured?: boolean; name?: string; error?: string };
+      try {
+        data = await response.json() as typeof data;
+      } catch {
+        throw new Error(`Сервис ответил HTTP ${response.status}, но без понятного текста.`);
+      }
+      okConfigured = response.ok && data.configured === true;
+      if (okState) okState.textContent = okConfigured
+        ? `Подключена группа ОК: ${data.name || 'владелец'}. Публикация выполняется автоматически.`
+        : (data.error || 'Одноклассники пока не подключены.');
+    } catch (error) {
+      okConfigured = false;
+      const rawDetail = error instanceof Error ? error.message : String(error);
+      if (okState) okState.textContent = `Не удалось проверить подключение ОК. Техническая причина: ${rawDetail || 'неизвестная ошибка сети'}.`;
+    }
+    updatePublishButton();
+  };
+
+  okConnectButton?.addEventListener('click', async () => {
+    const password = passwordInput?.value ?? '';
+    if (password.length < 12) return setStatus(okState, 'Сначала введите пароль владельца.', true);
+    okConnectButton.disabled = true;
+    setStatus(okState, 'Проверяем подключение Одноклассников…');
+    try {
+      await checkOkConnection(password);
+    } finally {
+      okConnectButton.disabled = false;
+    }
+  });
+
+  dzenCopyButton?.addEventListener('click', async () => {
+    const text = draft?.value.trim() ?? '';
+    if (!text) return;
+    const copied = await copyTextWithFallback(text);
+    setStatus(dzenStatus, copied
+      ? 'Текст скопирован. Вставьте его в редактор Дзена и прикрепите фото или видео вручную.'
+      : 'Не удалось скопировать автоматически. Выделите текст в поле шага 2 и скопируйте вручную (Ctrl+C).', !copied);
+  });
+
   draft?.addEventListener('input', () => { updateCounter(); resetApproval(); });
   approval?.addEventListener('change', updatePublishButton);
   publishModes.forEach((mode) => mode.addEventListener('change', () => {
@@ -389,6 +459,7 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     setStatus(status, 'Собираем ваш опыт и готовим текст для ВКонтакте…');
     if (editorSection) editorSection.hidden = true;
     if (mediaSection) mediaSection.hidden = true;
+    if (dzenSection) dzenSection.hidden = true;
     if (publishSection) publishSection.hidden = true;
     try {
       const response = await fetch(form.dataset.draftEndpoint || '/api/owner/generate-vk', {
@@ -406,9 +477,10 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
       updateCounter(); updateScheduleMinimum(); updatePublishButton(); renderMedia();
       if (editorSection) editorSection.hidden = false;
       if (mediaSection) mediaSection.hidden = false;
+      if (dzenSection) dzenSection.hidden = false;
       if (publishSection) publishSection.hidden = false;
       setStatus(status, 'Черновик готов. Теперь внимательно проверьте и исправьте его.');
-      await checkVkConnection(password);
+      await Promise.all([checkVkConnection(password), checkOkConnection(password)]);
       editorSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
       setStatus(status, error instanceof Error ? error.message : 'Произошла ошибка.', true);
@@ -531,6 +603,47 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
     if (mediaItems.length) setStatus(mediaStatus, `Все вложения загружены во ВКонтакте: ${attachments.length} из ${mediaItems.length}.`);
     return attachments;
   };
+
+  const uploadMediaOk = async (password: string) => {
+    const attachments: string[] = [];
+    for (let index = 0; index < mediaItems.length; index += 1) {
+      const item = mediaItems[index];
+      const cached = uploadedAttachmentsOk.get(item.id);
+      if (cached) { attachments.push(cached); continue; }
+      const kind = item.file.type.startsWith('image/') ? 'photo' : 'video';
+      setStatus(publishStatus, `Загружаем в Одноклассники файл ${index + 1} из ${mediaItems.length}: ${item.file.name}`);
+      const uploadFile = kind === 'photo' ? await preparePhotoForVk(item.file) : item.file;
+      const extension = uploadFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'photo' ? 'jpg' : 'mp4');
+      const headers: Record<string, string> = {
+        ...ownerHeaders(password),
+        'X-File-Size': String(uploadFile.size),
+        'X-File-Type': uploadFile.type,
+      };
+      const uploadEndpoint = (form?.dataset.okUploadEndpoint || '/api/owner/upload-ok-media') + '?kind=' + kind;
+      const body = new FormData();
+      body.append(kind === 'photo' ? 'photo' : 'video_file', uploadFile, 'garden-' + kind + '.' + extension);
+      const response = await fetch(uploadEndpoint, { method: 'POST', headers, body });
+      const data = await readApiJson<{ uploaded?: boolean; attachment?: string; error?: string }>(response, `Не удалось прочитать ответ Одноклассников после загрузки файла «${item.file.name}».`);
+      if (!response.ok || !data.uploaded || !data.attachment) throw new Error(data.error || `Одноклассники не приняли файл ${item.file.name}.`);
+      uploadedAttachmentsOk.set(item.id, data.attachment);
+      attachments.push(data.attachment);
+    }
+    return attachments;
+  };
+
+  const publishToOk = async (password: string, message: string) => {
+    const attachments = await uploadMediaOk(password);
+    setStatus(publishStatus, 'Публикуем пост в Одноклассниках…');
+    const response = await fetch(form?.dataset.okPublishEndpoint || '/api/owner/publish-ok', {
+      method: 'POST',
+      headers: ownerHeaders(password, true),
+      body: JSON.stringify({ message, attachments, approved: true }),
+    });
+    const data = await readApiJson<{ published?: boolean; url?: string; error?: string }>(response, 'Не удалось прочитать ответ сервиса публикации ОК.');
+    if (!response.ok || !data.published || !data.url) throw new Error(data.error || 'Не удалось отправить пост в ОК.');
+    return data.url;
+  };
+
   publishButton?.addEventListener('click', async () => {
     const message = draft?.value.trim() ?? '';
     const password = passwordInput?.value ?? '';
@@ -581,6 +694,28 @@ const historyEndpoint = `${apiOrigin}/api/owner/publication-history`;
         ...(data.publishAt ? { scheduledAt: new Date(data.publishAt * 1000).toISOString() } : {}),
         url: data.url,
       });
+
+      if (okConfigured && !publishAt) {
+        try {
+          const okUrl = await publishToOk(password, message);
+          setStatus(publishStatus, publishStatus?.textContent + ' Пост опубликован также в Одноклассниках.');
+          await saveHistory({
+            id: publishRequestId + '-ok', platform: 'ok',
+            title: plantInput?.value.trim().slice(0, 120) || 'Публикация без названия',
+            status: 'published', createdAt: new Date().toISOString(), url: okUrl,
+          });
+        } catch (okError) {
+          const okDetail = russianError(okError, 'Одноклассники отклонили публикацию записи.');
+          setStatus(publishStatus, publishStatus?.textContent + ` Публикация в ОК не удалась: ${okDetail}`, true);
+          void saveHistory({
+            id: publishRequestId + '-ok', platform: 'ok',
+            title: plantInput?.value.trim().slice(0, 120) || 'Публикация без названия',
+            status: 'error', createdAt: new Date().toISOString(),
+          });
+        }
+      } else if (okConfigured && publishAt) {
+        setStatus(publishStatus, publishStatus?.textContent + ' Отложенная публикация в ОК не поддерживается — отправьте пост в ОК вручную позже.');
+      }
     } catch (error) {
       const fallback = wallRequestStarted
         ? 'ВКонтакте отклонил публикацию записи. Пост не создан и не поставлен в очередь.'
