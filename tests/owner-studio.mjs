@@ -53,8 +53,8 @@ const preflight = await generateVkDraft({
 assert.equal(preflight.status, 204);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /Authorization/);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-File-Size/);
-assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-VK-Access-Token/);
 assert.match(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-VK-Upload-URL/);
+assert.doesNotMatch(preflight.headers.get('Access-Control-Allow-Headers') ?? '', /X-VK-Access-Token/);
 
 const missingPasswordSetup = await generateVkDraft({
   request: makeRequest('/api/owner/generate-vk', { plant: 'киви Стратона' }),
@@ -136,14 +136,14 @@ assert.equal(statusResponse.status, 200);
 assert.equal(statusBody.configured, true);
 assert.equal(statusBody.name, 'Владимир Денисов');
 
-const temporaryTokenRequest = makeRequest('/api/owner/vk-status', {});
-temporaryTokenRequest.headers.set('X-VK-Access-Token', 'temporary-vk-user-token');
-const temporaryStatusResponse = await vkStatus({
-  request: temporaryTokenRequest,
+// A client-supplied X-VK-Access-Token must not bypass the server's own VK_ACCESS_TOKEN secret.
+const spoofedTokenRequest = makeRequest('/api/owner/vk-status', {});
+spoofedTokenRequest.headers.set('X-VK-Access-Token', 'attacker-supplied-token');
+const spoofedStatusResponse = await vkStatus({
+  request: spoofedTokenRequest,
   env: { ADMIN_PASSWORD: password },
 });
-assert.equal(temporaryStatusResponse.status, 200);
-assert.equal((await temporaryStatusResponse.json()).ownerId, Number(ownerId));
+assert.equal(spoofedStatusResponse.status, 503);
 
 const photo = new File([new Uint8Array([1, 2, 3])], 'garden.jpg', { type: 'image/jpeg' });
 const photoResponse = await uploadVkMedia({ request: makeMediaRequest('photo', photo), env });

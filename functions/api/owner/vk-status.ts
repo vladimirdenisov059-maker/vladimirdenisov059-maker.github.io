@@ -28,7 +28,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   }
 
   try {
-    const { ownerId, user } = await resolvePersonalVkUser(request, env);
+    const { ownerId, user } = await resolvePersonalVkUser(env);
     const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
     return respond({
       configured: true,

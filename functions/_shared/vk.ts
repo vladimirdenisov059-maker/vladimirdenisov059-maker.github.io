@@ -24,12 +24,6 @@ export const configuredPersonalOwnerId = (env: VkEnv): number | null => {
   return Number.isSafeInteger(ownerId) && ownerId > 0 ? ownerId : null;
 };
 
-export const requestVkAccessToken = (request: Request, env: VkEnv) => {
-  const supplied = (request.headers.get('X-VK-Access-Token') ?? '').trim();
-  if (supplied && supplied.length <= 4096 && !/[\r\n]/.test(supplied)) return supplied;
-  return env.VK_ACCESS_TOKEN?.trim() || null;
-};
-
 export const callVk = async <T>(
   env: VkEnv,
   method: string,
@@ -61,8 +55,8 @@ interface VkCurrentUser {
   screen_name?: string;
 }
 
-export const resolvePersonalVkUser = async (request: Request, env: VkEnv) => {
-  const accessToken = requestVkAccessToken(request, env);
+export const resolvePersonalVkUser = async (env: VkEnv) => {
+  const accessToken = env.VK_ACCESS_TOKEN?.trim() || null;
   if (!accessToken) throw new Error('VK_NOT_CONFIGURED');
   const configuredOwnerId = configuredPersonalOwnerId(env);
   const parameters = new URLSearchParams({ fields: 'screen_name' });

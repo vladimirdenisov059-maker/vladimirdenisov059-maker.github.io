@@ -54,7 +54,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   }
   let vkIdentity;
   try {
-    vkIdentity = await resolvePersonalVkUser(request, env);
+    vkIdentity = await resolvePersonalVkUser(env);
   } catch (error) {
     const code = vkErrorCode(error);
     return respond({ error: `Личная страница ВК не подключена${code ? ` (код ${code})` : ''}. Нажмите «Подключить мою страницу ВК».` }, 503);
