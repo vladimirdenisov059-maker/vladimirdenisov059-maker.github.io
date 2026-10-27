@@ -45,7 +45,13 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
       }, 503);
     }
     const code = vkErrorCode(error);
-    console.error('VK users.get failed', code ?? error);
+    // Log only the upstream message, never request parameters or the Error object.
+    let message = reason || 'Unknown upstream error';
+    const token = env.VK_ACCESS_TOKEN?.trim();
+    if (token) {
+      message = message.replaceAll(token, '[redacted]').replaceAll(encodeURIComponent(token), '[redacted]');
+    }
+    console.error('VK users.get failed', { code, message: message.slice(0, 1000) });
     return respond({
       configured: false,
       error: `Не удалось проверить подключение ВК${code ? ` (код ${code})` : ''}.`,

@@ -307,4 +307,25 @@ assert.match(uploadSource, /сервер загрузки ответил HTTP/);
 assert.match(uploadSource, /bridgeUploadUrl/);
 assert.match(uploadSource, /isVkUploadHost/);
 
+const originalFetchForDiagnostics = globalThis.fetch;
+const originalConsoleError = console.error;
+const diagnosticLogs = [];
+try {
+  globalThis.fetch = async () => Response.json({ error: {
+    error_code: 9,
+    error_msg: `Flood control: ${env.VK_ACCESS_TOKEN}`,
+    request_params: [{ key: 'access_token', value: env.VK_ACCESS_TOKEN }],
+  } });
+  console.error = (...args) => diagnosticLogs.push(args);
+  const floodStatus = await vkStatus({ request: makeRequest('/api/owner/vk-status', {}), env });
+  assert.equal(floodStatus.status, 502);
+  assert.match((await floodStatus.json()).error, /код 9/);
+  assert.equal(diagnosticLogs[0][1].code, 9);
+  assert.match(diagnosticLogs[0][1].message, /Flood control/);
+  assert.doesNotMatch(JSON.stringify(diagnosticLogs), /vk-test-token|request_params/);
+} finally {
+  globalThis.fetch = originalFetchForDiagnostics;
+  console.error = originalConsoleError;
+}
+
 console.log('Owner studio checks passed: authentication, VK server-side publish, media uploads and scheduling');
