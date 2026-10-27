@@ -311,18 +311,34 @@ const originalFetchForDiagnostics = globalThis.fetch;
 const originalConsoleError = console.error;
 const diagnosticLogs = [];
 try {
-  globalThis.fetch = async () => Response.json({ error: {
-    error_code: 9,
-    error_msg: `Flood control: ${env.VK_ACCESS_TOKEN}`,
-    request_params: [{ key: 'access_token', value: env.VK_ACCESS_TOKEN }],
-  } });
+  globalThis.fetch = async (_url, init) => {
+    const sentToken = new URLSearchParams(await new Response(init.body).text()).get('access_token');
+    return Response.json({ error: {
+      error_code: 9,
+      error_msg: `Flood control: ${sentToken}`,
+      request_params: [{ key: 'access_token', value: sentToken }],
+    } });
+  };
   console.error = (...args) => diagnosticLogs.push(args);
-  const floodStatus = await vkStatus({ request: makeRequest('/api/owner/vk-status', {}), env });
-  assert.equal(floodStatus.status, 502);
-  assert.match((await floodStatus.json()).error, /код 9/);
+  // The connection was confirmed above, so a repeated check is answered from
+  // the remembered result and never reaches VK again.
+  const cachedStatus = await vkStatus({ request: makeRequest('/api/owner/vk-status', {}), env });
+  const cachedBody = await cachedStatus.json();
+  assert.equal(cachedStatus.status, 200);
+  assert.equal(cachedBody.configured, true);
+  assert.equal(cachedBody.cached, true);
+  assert.equal(diagnosticLogs.length, 0);
+
+  // Other credentials have nothing remembered, so flood control is reported as retryable.
+  const coldEnv = { ...env, VK_ACCESS_TOKEN: 'vk-other-token', VK_OWNER_ID: '54321' };
+  const coldFlood = await vkStatus({ request: makeRequest('/api/owner/vk-status', {}), env: coldEnv });
+  const coldBody = await coldFlood.json();
+  assert.equal(coldFlood.status, 429);
+  assert.equal(coldBody.retryable, true);
+  assert.match(coldBody.error, /код 9/);
   assert.equal(diagnosticLogs[0][1].code, 9);
   assert.match(diagnosticLogs[0][1].message, /Flood control/);
-  assert.doesNotMatch(JSON.stringify(diagnosticLogs), /vk-test-token|request_params/);
+  assert.doesNotMatch(JSON.stringify(diagnosticLogs), /vk-test-token|vk-other-token|request_params/);
 } finally {
   globalThis.fetch = originalFetchForDiagnostics;
   console.error = originalConsoleError;

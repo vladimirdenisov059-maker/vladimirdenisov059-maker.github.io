@@ -340,19 +340,32 @@ const okPublishEndpoint = `${apiOrigin}/api/owner/publish-ok`;
   };
   historyRefresh?.addEventListener('click', () => void loadHistory());
 
+  // VK blocks repeated users.get calls with error 9 (Flood control), so after
+  // such an answer the check stays disabled until the cooldown runs out.
+  const VK_FLOOD_COOLDOWN_MS = 5 * 60 * 1000;
+  let vkCooldownUntil = 0;
+
   const checkVkConnection = async (password: string) => {
     if (!form?.dataset.statusEndpoint) return;
+    const waitMs = vkCooldownUntil - Date.now();
+    if (waitMs > 0) {
+      setStatus(vkState, `ВК ограничил частые проверки (код 9). Следующая попытка будет доступна через ${Math.ceil(waitMs / 60000)} мин.`, true);
+      return;
+    }
     try {
       const response = await fetch(form.dataset.statusEndpoint, { method: 'POST', headers: ownerHeaders(password) });
-      let data: { configured?: boolean; ownerId?: number; name?: string; error?: string };
+      let data: { configured?: boolean; ownerId?: number; name?: string; error?: string; notice?: string; stale?: boolean; retryable?: boolean };
       try {
         data = await response.json() as typeof data;
       } catch {
         throw new Error(`Сервис ответил HTTP ${response.status}, но без понятного текста.`);
       }
+      if (response.status === 429 || data.retryable === true || data.stale === true) {
+        vkCooldownUntil = Date.now() + VK_FLOOD_COOLDOWN_MS;
+      }
       vkConfigured = response.ok && data.configured === true;
       if (vkState) vkState.textContent = vkConfigured
-        ? `Подключена личная страница ВК: ${data.name || 'владелец'}. Публикация выполняется автоматически, без окон ВК.`
+        ? `Подключена личная страница ВК: ${data.name || 'владелец'}. Публикация выполняется автоматически, без окон ВК.${data.notice ? ` ${data.notice}` : ''}`
         : (data.error || 'ВКонтакте пока не подключён.');
     } catch (error) {
       vkConfigured = false;
