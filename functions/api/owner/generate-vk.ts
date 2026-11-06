@@ -1,4 +1,5 @@
 import { buildGardenEvidence } from '../generate-post.ts';
+import { AiGenerationError, generateText, OWNER_MODELS, type AiEnv } from '../../_shared/ai.ts';
 import {
   authenticateOwner,
   ownerCorsHeaders,
@@ -7,8 +8,7 @@ import {
   type OwnerEnv,
 } from '../../_shared/owner-auth.ts';
 
-interface Env extends OwnerEnv {
-  PROXYAPI_KEY?: string;
+interface Env extends OwnerEnv, AiEnv {
   VK_ACCESS_TOKEN?: string;
   VK_OWNER_ID?: string;
 }
@@ -18,19 +18,12 @@ interface PagesContext {
   env: Env;
 }
 
-interface GeminiResponse {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  error?: { message?: string };
-}
-
 interface DraftRequest {
   plant?: unknown;
   focus?: unknown;
   notes?: unknown;
 }
 
-const MODEL = 'gemini-3.5-flash-lite';
-const API_URL = `https://api.proxyapi.ru/google/v1beta/models/${MODEL}:generateContent`;
 const allowedPlantName = /^[\p{L}\p{M}\d][\p{L}\p{M}\d\s()«»„“”'’.,-]{1,78}$/u;
 
 const cleanText = (value: unknown, maximumLength: number) =>
@@ -52,8 +45,6 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
         : 'Неверный пароль владельца.',
     }, auth.status);
   }
-  if (!env.PROXYAPI_KEY) return respond({ error: 'Сервис генерации ещё не настроен.' }, 503);
-
   const body = await readJsonBody<DraftRequest>(request, 8192);
   if (!body) return respond({ error: 'Не удалось прочитать запрос.' }, 400);
 
@@ -86,40 +77,13 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     'Верни только готовый текст поста без пояснений редактору.',
   ].join('\n\n');
 
-  let upstream: Response;
+  let post: string;
   try {
-    upstream = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.PROXYAPI_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.48, topP: 0.9, maxOutputTokens: 1600 },
-      }),
-    });
-  } catch {
-    return respond({ error: 'Сервис генерации временно недоступен.' }, 502);
+    post = await generateText(env, prompt, { models: OWNER_MODELS, maxTokens: 2600, temperature: 0.48 });
+  } catch (error) {
+    if (error instanceof AiGenerationError) return respond({ error: error.userMessage }, error.status);
+    throw error;
   }
-
-  let result: GeminiResponse;
-  try {
-    result = await upstream.json() as GeminiResponse;
-  } catch {
-    return respond({ error: 'Сервис генерации вернул некорректный ответ.' }, 502);
-  }
-  if (!upstream.ok) {
-    console.error('Owner draft generation failed', upstream.status, result.error?.message ?? 'Unknown error');
-    return respond({ error: 'Не удалось создать черновик. Попробуйте ещё раз позже.' }, 502);
-  }
-
-  const post = result.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text?.trim())
-    .filter(Boolean)
-    .join('\n\n')
-    .trim();
-  if (!post) return respond({ error: 'Модель не вернула текст. Попробуйте ещё раз.' }, 502);
 
   return respond({
     post,

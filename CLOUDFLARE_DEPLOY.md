@@ -1,9 +1,9 @@
 # Cloudflare API, автоматически обновляемый из GitHub
 
 Основной сайт остаётся на GitHub Pages: `https://vladimirdenisov059-maker.github.io/`.
-Cloudflare Pages получает тот же GitHub-репозиторий, но публикует только папку `cloudflare-api-public` и функцию `/api/generate-post`. Ключ ProxyAPI хранится только как зашифрованный секрет Cloudflare.
+Cloudflare Pages получает тот же GitHub-репозиторий, но публикует только папку `cloudflare-api-public` и функцию `/api/generate-post`. Тексты пишет бесплатный Cloudflare Workers AI: привязка `AI` задана в `wrangler.jsonc`, отдельный ключ не нужен.
 
-Схема: GitHub Pages → `gardens-of-donbas-api.pages.dev/api/generate-post` → ProxyAPI/Gemini.
+Схема: GitHub Pages → `gardens-of-donbas-api.pages.dev/api/generate-post` → Cloudflare Workers AI (бесплатный дневной лимит, обновляется в 03:00 по Москве).
 После каждого push в `main` GitHub Pages обновляет сайт, а Cloudflare Pages автоматически обновляет API.
 
 ## Регистрация Cloudflare
@@ -36,7 +36,7 @@ Cloudflare Pages получает тот же GitHub-репозиторий, н�
 
 1. Откройте проект `gardens-of-donbas-api`.
 2. Перейдите в **Settings → Variables and Secrets**.
-3. Добавьте секрет `PROXYAPI_KEY`, включите шифрование и вставьте ключ ProxyAPI.
+3. Ключ для ИИ не нужен: Workers AI подключается привязкой `AI` из `wrangler.jsonc`. Старый секрет `PROXYAPI_KEY` больше не используется, его можно удалить.
 4. Добавьте обычную переменную `ALLOWED_ORIGINS` со значением `https://vladimirdenisov059-maker.github.io`.
 5. Откройте **Deployments** и повторите последнее развёртывание.
 

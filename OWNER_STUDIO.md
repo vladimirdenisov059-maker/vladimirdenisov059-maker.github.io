@@ -18,7 +18,7 @@
 
 Проект: `gardens-of-donbas-api` → **Settings → Variables and Secrets**.
 
-- `PROXYAPI_KEY` — ключ генерации текста, encrypted secret.
+- Ключ генерации текста не нужен: черновики пишет бесплатный Cloudflare Workers AI (привязка `AI` в `wrangler.jsonc`).
 - `ADMIN_PASSWORD` — пароль владельца длиной не менее 12 символов, encrypted secret.
 - `VK_ACCESS_TOKEN` — пользовательский токен ВКонтакте, encrypted secret.
 - `VK_OWNER_ID` — положительный числовой ID личной страницы Владимира.

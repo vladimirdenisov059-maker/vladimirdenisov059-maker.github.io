@@ -34,7 +34,7 @@ npm run dev
 
 ## Размещение
 
-Основной сайт публикуется на GitHub Pages. Только API генератора размещается отдельно в Cloudflare Pages, где зашифрованно хранится `PROXYAPI_KEY`. Пошаговая настройка описана в `CLOUDFLARE_DEPLOY.md`.
+Основной сайт публикуется на GitHub Pages. Только API генератора размещается отдельно в Cloudflare Pages, где тексты пишет бесплатный Cloudflare Workers AI (привязка `AI`, без платных ключей). Пошаговая настройка описана в `CLOUDFLARE_DEPLOY.md`.
 
 Папка `dist` после `npm run build` публикуется GitHub Actions. Cloudflare получает только содержимое `cloudflare-api-public` и функцию из `functions/api/generate-post.ts`.
 

@@ -1,7 +1,7 @@
 import { plants } from '../../src/data/plants.ts';
+import { AiGenerationError, generateText, PUBLIC_MODELS, type AiEnv } from '../_shared/ai.ts';
 
-interface Env {
-  PROXYAPI_KEY?: string;
+interface Env extends AiEnv {
   ALLOWED_ORIGINS?: string;
 }
 
@@ -10,17 +10,6 @@ interface PagesContext {
   env: Env;
 }
 
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>;
-    };
-  }>;
-  error?: { message?: string };
-}
-
-const MODEL = 'gemini-3.5-flash-lite';
-const API_URL = `https://api.proxyapi.ru/google/v1beta/models/${MODEL}:generateContent`;
 const allowedPlantName = /^[\p{L}\p{M}\d][\p{L}\p{M}\d\s()«»„“”'’.,-]{1,58}$/u;
 
 const publishedExperimentEvidence: Record<string, string[]> = {
@@ -155,7 +144,7 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     return respond({ error: 'Запрос слишком большой.' }, 413);
   }
 
-  if (!env.PROXYAPI_KEY) {
+  if (!env.AI) {
     return respond({ error: 'Генератор ещё не настроен владельцем сайта.' }, 503);
   }
 
@@ -198,47 +187,12 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
     'Не используй Markdown-разметку, хэштеги, ссылки и призывы покупать товары.',
   ].join('\n');
 
-  let upstream: Response;
+  let post: string;
   try {
-    upstream = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.PROXYAPI_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.55,
-          topP: 0.9,
-          maxOutputTokens: 500,
-        },
-      }),
-    });
-  } catch {
-    return respond({ error: 'Сервис генерации временно недоступен. Попробуйте позже.' }, 502);
-  }
-
-  let result: GeminiResponse;
-  try {
-    result = (await upstream.json()) as GeminiResponse;
-  } catch {
-    return respond({ error: 'Сервис генерации вернул некорректный ответ.' }, 502);
-  }
-
-  if (!upstream.ok) {
-    console.error('ProxyAPI request failed', upstream.status, result.error?.message ?? 'Unknown error');
-    return respond({ error: 'Не удалось создать пост. Попробуйте ещё раз чуть позже.' }, 502);
-  }
-
-  const post = result.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text?.trim())
-    .filter(Boolean)
-    .join('\n\n')
-    .trim();
-
-  if (!post) {
-    return respond({ error: 'Модель не вернула текст. Попробуйте другое название растения.' }, 502);
+    post = await generateText(env, prompt, { models: PUBLIC_MODELS, maxTokens: 900, temperature: 0.55 });
+  } catch (error) {
+    if (error instanceof AiGenerationError) return respond({ error: error.userMessage }, error.status);
+    throw error;
   }
 
   return respond({ post, plant, experienceBased: evidence.records.length > 0, matchedPlant: matchedPlant || null });

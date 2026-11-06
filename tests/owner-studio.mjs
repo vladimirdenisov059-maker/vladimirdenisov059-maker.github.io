@@ -8,9 +8,15 @@ import { onRequest as uploadVkMedia } from '../functions/api/owner/upload-vk-med
 const origin = 'https://vladimirdenisov059-maker.github.io';
 const password = 'strong-owner-password-for-tests';
 const ownerId = '12345';
+let capturedPrompt = '';
 const env = {
   ADMIN_PASSWORD: password,
-  PROXYAPI_KEY: 'test-only',
+  AI: {
+    run: async (_model, inputs) => {
+      capturedPrompt = inputs.messages[0].content;
+      return { response: 'Киви Стратона: мой опыт\n\nПодробный проверяемый черновик для ВКонтакте.' };
+    },
+  },
   VK_ACCESS_TOKEN: 'vk-test-token',
   VK_OWNER_ID: ownerId,
 };
@@ -58,7 +64,7 @@ assert.doesNotMatch(preflight.headers.get('Access-Control-Allow-Headers') ?? '',
 
 const missingPasswordSetup = await generateVkDraft({
   request: makeRequest('/api/owner/generate-vk', { plant: 'киви Стратона' }),
-  env: { PROXYAPI_KEY: 'test-only' },
+  env: {},
 });
 assert.equal(missingPasswordSetup.status, 503);
 
@@ -68,18 +74,12 @@ const wrongPassword = await generateVkDraft({
 });
 assert.equal(wrongPassword.status, 401);
 
-let capturedPrompt = '';
 let capturedWallParams;
 let photoUploadWasStreamed = false;
 let videoUploadWasStreamed = false;
 let malformedPhotoUpload = false;
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
-  if (target.includes('proxyapi.ru')) {
-    const upstreamBody = JSON.parse(options.body);
-    capturedPrompt = upstreamBody.contents[0].parts[0].text;
-    return Response.json({ candidates: [{ content: { parts: [{ text: 'Киви Стратона: мой опыт\n\nПодробный проверяемый черновик для ВКонтакте.' }] } }] });
-  }
   if (target.includes('/method/users.get')) {
     return Response.json({ response: [{ id: Number(ownerId), first_name: 'Владимир', last_name: 'Денисов', screen_name: 'dionis1959' }] });
   }
