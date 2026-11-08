@@ -229,7 +229,7 @@ const okPublishEndpoint = `${apiOrigin}/api/owner/publish-ok`;
       helper.focus();
       helper.select();
       let copied = false;
-      try { copied = document.execCommand('copy'); } catch { copied = false; }
+      try { copied = document.execCommand('copy'); } catch { /* остаётся false */ }
       document.body.removeChild(helper);
       return copied;
     }
