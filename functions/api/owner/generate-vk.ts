@@ -1,4 +1,5 @@
 import { buildGardenEvidence } from '../generate-post.ts';
+import { normalizePlantInput, plantNameError } from '../../_shared/plant-name.ts';
 import { AiGenerationError, generateText, OWNER_MODELS, type AiEnv } from '../../_shared/ai.ts';
 import {
   authenticateOwner,
@@ -24,7 +25,6 @@ interface DraftRequest {
   notes?: unknown;
 }
 
-const allowedPlantName = /^[\p{L}\p{M}\d][\p{L}\p{M}\d\s()«»„“”'’.,-]{1,78}$/u;
 
 const cleanText = (value: unknown, maximumLength: number) =>
   typeof value === 'string' ? value.trim().replace(/\r\n?/g, '\n').slice(0, maximumLength) : '';
@@ -48,12 +48,11 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   const body = await readJsonBody<DraftRequest>(request, 8192);
   if (!body) return respond({ error: 'Не удалось прочитать запрос.' }, 400);
 
-  const plant = cleanText(body.plant, 80).replace(/\s+/g, ' ');
+  const plant = normalizePlantInput(body.plant);
   const focus = cleanText(body.focus, 500);
   const notes = cleanText(body.notes, 3000);
-  if (!allowedPlantName.test(plant)) {
-    return respond({ error: 'Введите название растения — от 2 до 80 символов.' }, 400);
-  }
+  const plantError = plantNameError(plant, 80);
+  if (plantError) return respond({ error: plantError }, 400);
 
   const evidence = buildGardenEvidence(plant);
   if (!evidence.records.length && !notes) {

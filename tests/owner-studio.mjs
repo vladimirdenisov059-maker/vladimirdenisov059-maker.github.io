@@ -124,6 +124,26 @@ assert.match(capturedPrompt, /Пиши от первого лица/);
 assert.match(capturedPrompt, /Первые примерно 15 лет/);
 assert.match(capturedPrompt, /Только после 2019 года/);
 
+// Straight quotes in a variety name are ordinary input and become «ёлочки».
+const quotedResponse = await generateVkDraft({
+  request: makeRequest('/api/owner/generate-vk', {
+    plant: 'Боярышник сорт "Китайский"',
+    focus: 'Это не яблоко - это боярышник!',
+    notes: 'В ноябре поспевают ягоды очень крупного (до 4 см в диаметре) боярышника сорта Китайский.',
+  }),
+  env,
+});
+assert.equal(quotedResponse.status, 200);
+assert.equal((await quotedResponse.json()).plant, 'Боярышник сорт «Китайский»');
+assert.match(capturedPrompt, /до 4 см в диаметре/);
+
+const badSymbolResponse = await generateVkDraft({
+  request: makeRequest('/api/owner/generate-vk', { plant: 'Боярышник <script>', notes: 'Факт.' }),
+  env,
+});
+assert.equal(badSymbolResponse.status, 400);
+assert.match((await badSymbolResponse.json()).error, /недопустимые символы: < >/);
+
 const unconfiguredStatusResponse = await vkStatus({
   request: makeRequest('/api/owner/vk-status', {}),
   env: { ADMIN_PASSWORD: password },

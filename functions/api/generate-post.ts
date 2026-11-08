@@ -1,4 +1,5 @@
 import { plants } from '../../src/data/plants.ts';
+import { normalizePlantInput, plantNameError } from '../_shared/plant-name.ts';
 import { AiGenerationError, generateText, PUBLIC_MODELS, type AiEnv } from '../_shared/ai.ts';
 
 interface Env extends AiEnv {
@@ -30,7 +31,6 @@ const AUTHOR_MENTION = new RegExp(
 );
 const mentionsAuthor = (text: string) => AUTHOR_MENTION.test(text);
 
-const allowedPlantName =/^[\p{L}\p{M}\d][\p{L}\p{M}\d\s()«»„“”'’.,-]{1,58}$/u;
 
 const publishedExperimentEvidence: Record<string, string[]> = {
   'persimmon-wonderful': [
@@ -171,14 +171,13 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   let plant: string;
   try {
     const body = (await request.json()) as { plant?: unknown };
-    plant = typeof body.plant === 'string' ? body.plant.trim().replace(/\s+/g, ' ') : '';
+    plant = normalizePlantInput(body.plant);
   } catch {
     return respond({ error: 'Не удалось прочитать запрос.' }, 400);
   }
 
-  if (!allowedPlantName.test(plant)) {
-    return respond({ error: 'Введите название растения — от 2 до 60 символов.' }, 400);
-  }
+  const plantError = plantNameError(plant, 60);
+  if (plantError) return respond({ error: plantError }, 400);
 
   const evidence = buildGardenEvidence(plant);
   const matchedPlant = evidence.records.map((record) => record.name).join(', ');
