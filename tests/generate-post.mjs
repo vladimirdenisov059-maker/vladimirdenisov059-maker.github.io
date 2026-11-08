@@ -115,4 +115,42 @@ assert.match((await quotaResponse.json()).error, /бесплатный днев�
 assert.equal(capturedModels.length, 1);
 aiCalls.quota = false;
 
+// Plants missing from the archive: neutral reference, no author, fixed note appended.
+const archiveFreeReplies = [];
+const archiveFreePrompts = [];
+const archiveFreeEnv = {
+  AI: {
+    run: async (_model, inputs) => {
+      archiveFreePrompts.push(inputs.messages[0].content);
+      return { response: archiveFreeReplies.shift() ?? 'Инжир в Донбассе\n\nОн теплолюбив и требует укрытия.' };
+    },
+  },
+};
+
+archiveFreeReplies.push('Инжир в Донбассе\n\nОн теплолюбив и требует укрытия на зиму.');
+const figResponse = await onRequest({ request: makeRequest('инжир'), env: archiveFreeEnv });
+const figBody = await figResponse.json();
+assert.equal(figResponse.status, 200);
+assert.equal(figBody.experienceBased, false);
+assert.equal(archiveFreePrompts.length, 1, 'a clean answer is not regenerated');
+assert.match(figBody.post, /Он теплолюбив/, 'a pronoun for the plant is not mistaken for the author');
+assert.match(figBody.post, /личного опыта выращивания этого растения в архиве сада Владимира Денисова пока нет/);
+assert.doesNotMatch(archiveFreePrompts[0], /Из опыта Владимира Денисова|абзаца опыта автора/);
+assert.match(archiveFreePrompts[0], /Строго запрещено упоминать автора/);
+
+archiveFreePrompts.length = 0;
+archiveFreeReplies.push(
+  'Инжир в саду\n\nАвтор надеется, что у вас получится.',
+  'Инжир в Донбассе\n\nТеплолюбивое растение, нужна защита от морозов.',
+);
+const retriedResponse = await onRequest({ request: makeRequest('инжир'), env: archiveFreeEnv });
+assert.equal(retriedResponse.status, 200);
+assert.equal(archiveFreePrompts.length, 2, 'an author mention triggers one stricter retry');
+assert.match(archiveFreePrompts[1], /предыдущий вариант нарушил запрет/);
+assert.doesNotMatch((await retriedResponse.json()).post, /Автор надеется/);
+
+archiveFreeReplies.push('В моём саду инжир растёт.', 'Я выращиваю инжир давно.');
+const refusedResponse = await onRequest({ request: makeRequest('инжир'), env: archiveFreeEnv });
+assert.equal(refusedResponse.status, 502, 'a repeated invented experience is refused, not shown');
+
 console.log('API smoke checks passed: persimmon, dogwood and kiwi evidence are separated');
